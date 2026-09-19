@@ -51,6 +51,8 @@ npm start
 
 The default listener is `127.0.0.1:3100`. Set `HOST` and `PORT` to override it. Terminate TLS at a trusted reverse proxy and expose the gateway only through HTTPS.
 
+Deployment templates are available in `deploy/`. The systemd unit expects the current release at `/opt/bbb-tenant-gateway/current`, configuration at `/etc/bbb-tenant-gateway/tenants.json`, and secrets in `/etc/default/bbb-tenant-gateway`. The Nginx template publishes a service listening on port 3199 under `/tenant-api/`; adjust the port and path together if they conflict with the target host.
+
 ## API
 
 All tenant endpoints require:
@@ -130,4 +132,3 @@ DELETE /v1/tenants/lunar-one/meetings/course-42-session-7
 - `createTime` is required on join so a join URL cannot be reused for a later meeting with the same external ID.
 - Callback and logout URLs come from trusted tenant configuration, not request bodies.
 - Rotate a tenant key by generating a new key and replacing its configured hash. A production deployment can extend the configuration to accept overlapping key IDs during a rotation window.
-

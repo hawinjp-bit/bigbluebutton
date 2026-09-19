@@ -1,0 +1,30 @@
+[Unit]
+Description=BigBlueButton Tenant Gateway
+After=network-online.target bbb-web.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bbb-tenant-gateway
+Group=bbb-tenant-gateway
+WorkingDirectory=/opt/bbb-tenant-gateway/current
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/default/bbb-tenant-gateway
+ExecStart=/usr/bin/node dist/index.js
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=15
+UMask=0077
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
+
