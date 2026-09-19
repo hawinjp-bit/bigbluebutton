@@ -8,6 +8,7 @@ Type=oneshot
 User=bbb-recording-wasabi
 Group=bbb-recording-wasabi
 EnvironmentFile=/etc/default/bbb-recording-wasabi
+Environment=HOME=/var/lib/bbb-recording-wasabi
 ExecStart=/usr/bin/python3 /opt/bbb-tenant-gateway/current/deploy/recording-wasabi-sync.py
 StateDirectory=bbb-recording-wasabi
 UMask=0077

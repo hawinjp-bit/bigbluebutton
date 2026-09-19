@@ -39,17 +39,26 @@ class RecordingWasabiSyncTest(unittest.TestCase):
         tenant_id: str,
         meeting_id: str,
         playback_format: str = "presentation",
+        published_metadata: bool = False,
+        raw_metadata: bool = True,
     ) -> None:
         published = settings.published_dir / playback_format / record_id
         published.mkdir(parents=True)
-        (published / "metadata.xml").write_text("<recording />", encoding="utf-8")
-        raw = settings.raw_dir / record_id
-        raw.mkdir(parents=True)
-        (raw / "events.xml").write_text(
-            f'<recording><metadata tenantId="{tenant_id}" '
-            f'meetingId="{meeting_id}" /></recording>',
-            encoding="utf-8",
+        published_body = (
+            f'<recording><meta><tenantId>{tenant_id}</tenantId>'
+            f'<meetingId>{meeting_id}</meetingId></meta></recording>'
+            if published_metadata
+            else "<recording />"
         )
+        (published / "metadata.xml").write_text(published_body, encoding="utf-8")
+        if raw_metadata:
+            raw = settings.raw_dir / record_id
+            raw.mkdir(parents=True)
+            (raw / "events.xml").write_text(
+                f'<recording><metadata tenantId="{tenant_id}" '
+                f'meetingId="{meeting_id}" /></recording>',
+                encoding="utf-8",
+            )
 
     def test_discovers_only_recordings_with_both_tenant_markers(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -57,6 +66,22 @@ class RecordingWasabiSyncTest(unittest.TestCase):
             self.add_recording(settings, "record-1", "lunar-one", "lunar-one:meeting-1")
             self.add_recording(settings, "record-2", "other", "lunar-one:meeting-2")
             self.add_recording(settings, "record-3", "lunar-one", "other:meeting-3")
+
+            recordings = MODULE.discover_recordings(settings)
+
+            self.assertEqual([recording.record_id for recording in recordings], ["record-1"])
+
+    def test_discovers_recording_after_raw_metadata_is_removed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            settings = self.settings(Path(directory))
+            self.add_recording(
+                settings,
+                "record-1",
+                "lunar-one",
+                "lunar-one:meeting-1",
+                published_metadata=True,
+                raw_metadata=False,
+            )
 
             recordings = MODULE.discover_recordings(settings)
 

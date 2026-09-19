@@ -113,6 +113,8 @@ class Recording:
 
 
 def first_metadata_attributes(events_xml: Path) -> dict[str, str]:
+    if not events_xml.is_file():
+        return {}
     try:
         for _, element in ET.iterparse(events_xml, events=("start",)):
             if element.tag.rsplit("}", 1)[-1] == "metadata":
@@ -122,11 +124,39 @@ def first_metadata_attributes(events_xml: Path) -> dict[str, str]:
     return {}
 
 
-def belongs_to_tenant(events_xml: Path, tenant_id: str, meeting_id_prefix: str) -> bool:
-    metadata = first_metadata_attributes(events_xml)
+def published_metadata_values(metadata_xml: Path) -> dict[str, str]:
+    try:
+        root = ET.parse(metadata_xml).getroot()
+        for element in root:
+            if element.tag.rsplit("}", 1)[-1] != "meta":
+                continue
+            return {
+                child.tag.rsplit("}", 1)[-1]: child.text or ""
+                for child in element
+            }
+    except (ET.ParseError, OSError) as error:
+        print(f"Skipping unreadable published metadata {metadata_xml}: {error}", file=sys.stderr)
+    return {}
+
+
+def metadata_matches(metadata: dict[str, str], tenant_id: str, meeting_id_prefix: str) -> bool:
     return (
         metadata.get("tenantId") == tenant_id
         and metadata.get("meetingId", "").startswith(meeting_id_prefix)
+    )
+
+
+def belongs_to_tenant(
+    published_metadata: Path,
+    events_xml: Path,
+    tenant_id: str,
+    meeting_id_prefix: str,
+) -> bool:
+    published = published_metadata_values(published_metadata)
+    if metadata_matches(published, tenant_id, meeting_id_prefix):
+        return True
+    return metadata_matches(
+        first_metadata_attributes(events_xml), tenant_id, meeting_id_prefix
     )
 
 
@@ -141,7 +171,10 @@ def discover_recordings(settings: Settings) -> list[Recording]:
             continue
         events_xml = settings.raw_dir / record_id / "events.xml"
         if belongs_to_tenant(
-            events_xml, settings.tenant_id, settings.meeting_id_prefix
+            published_metadata,
+            events_xml,
+            settings.tenant_id,
+            settings.meeting_id_prefix,
         ):
             recordings.append(Recording(record_id, playback_format, source))
     return recordings
