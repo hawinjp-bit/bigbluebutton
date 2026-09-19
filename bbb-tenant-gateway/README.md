@@ -53,6 +53,14 @@ The default listener is `127.0.0.1:3100`. Set `HOST` and `PORT` to override it. 
 
 Deployment templates are available in `deploy/`. The systemd unit expects the current release at `/opt/bbb-tenant-gateway/current`, configuration at `/etc/bbb-tenant-gateway/tenants.json`, and secrets in `/etc/default/bbb-tenant-gateway`. The Nginx template publishes a service listening on port 3199 under `/tenant-api/`; adjust the port and path together if they conflict with the target host.
 
+On a BigBlueButton host, unpack a built release below `/opt/bbb-tenant-gateway/releases/` and run its installer as root:
+
+```bash
+sudo ./deploy/install.sh /opt/bbb-tenant-gateway/releases/<release>
+```
+
+The installer obtains the upstream URL and shared secret from `bbb-conf --secret` without printing them. It creates the initial `lunar-one` credential at `/etc/bbb-tenant-gateway/lunar-one.api-key` with mode `0600`; retrieve it once through an administrator channel and place it in the tenant backend's secret store.
+
 ## API
 
 All tenant endpoints require:
