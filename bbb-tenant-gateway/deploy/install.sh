@@ -21,6 +21,12 @@ service_file="/etc/systemd/system/bbb-tenant-gateway.service"
 nginx_file="/etc/bigbluebutton/nginx/bbb-tenant-gateway.nginx"
 service_user="bbb-tenant-gateway"
 service_group="bbb-tenant-gateway"
+wasabi_config_dir="/etc/bbb-recording-wasabi"
+wasabi_environment_file="/etc/default/bbb-recording-wasabi"
+wasabi_service_file="/etc/systemd/system/bbb-recording-wasabi.service"
+wasabi_timer_file="/etc/systemd/system/bbb-recording-wasabi.timer"
+wasabi_user="bbb-recording-wasabi"
+wasabi_group="bbb-recording-wasabi"
 listen_port="3199"
 
 case "${release_dir}" in
@@ -35,7 +41,11 @@ for required_file in \
   "${release_dir}/dist/index.js" \
   "${release_dir}/package.json" \
   "${release_dir}/deploy/bbb-tenant-gateway.service" \
-  "${release_dir}/deploy/bbb-tenant-gateway.nginx"; do
+  "${release_dir}/deploy/bbb-tenant-gateway.nginx" \
+  "${release_dir}/deploy/bbb-recording-wasabi.service" \
+  "${release_dir}/deploy/bbb-recording-wasabi.timer" \
+  "${release_dir}/deploy/bbb-recording-wasabi.env.example" \
+  "${release_dir}/deploy/recording-wasabi-sync.py"; do
   if [[ ! -f "${required_file}" ]]; then
     echo "Missing release file: ${required_file}" >&2
     exit 1
@@ -47,6 +57,7 @@ command -v node >/dev/null
 command -v npm >/dev/null
 command -v nginx >/dev/null
 command -v python3 >/dev/null
+command -v rclone >/dev/null
 
 if ! getent group "${service_group}" >/dev/null; then
   groupadd --system "${service_group}"
@@ -60,7 +71,43 @@ if ! id "${service_user}" >/dev/null 2>&1; then
     "${service_user}"
 fi
 
+if ! getent group "${wasabi_group}" >/dev/null; then
+  groupadd --system "${wasabi_group}"
+fi
+if ! id "${wasabi_user}" >/dev/null 2>&1; then
+  useradd \
+    --system \
+    --gid "${wasabi_group}" \
+    --home-dir /nonexistent \
+    --shell /usr/sbin/nologin \
+    "${wasabi_user}"
+fi
+
 install -d -o root -g "${service_group}" -m 0750 "${config_dir}"
+install -d -o root -g "${wasabi_group}" -m 0750 "${wasabi_config_dir}"
+
+if [[ ! -f "${wasabi_config_dir}/rclone.conf" ]]; then
+  if [[ -f /root/.config/rclone/rclone.conf ]]; then
+    install -o root -g "${wasabi_group}" -m 0640 \
+      /root/.config/rclone/rclone.conf \
+      "${wasabi_config_dir}/rclone.conf"
+  else
+    install -o root -g "${wasabi_group}" -m 0640 \
+      /dev/null \
+      "${wasabi_config_dir}/rclone.conf"
+  fi
+fi
+chown root:"${wasabi_group}" "${wasabi_config_dir}/rclone.conf"
+chmod 0640 "${wasabi_config_dir}/rclone.conf"
+
+if [[ ! -f "${wasabi_environment_file}" ]]; then
+  install -o root -g "${wasabi_group}" -m 0640 \
+    "${release_dir}/deploy/bbb-recording-wasabi.env.example" \
+    "${wasabi_environment_file}"
+else
+  chown root:"${wasabi_group}" "${wasabi_environment_file}"
+  chmod 0640 "${wasabi_environment_file}"
+fi
 
 CONFIG_DIR="${config_dir}" \
 ENVIRONMENT_FILE="${environment_file}" \
@@ -111,7 +158,9 @@ tenant_config = {
             "userIdPrefix": "lunar-one:",
             "allowedOrigins": [],
             "allowModerator": True,
-            "allowRecording": False,
+            "allowRecording": True,
+            "autoStartRecording": True,
+            "allowStartStopRecording": True,
             "maxConcurrentMeetings": 20,
             "maxParticipantsPerMeeting": 100,
             "requestsPerMinute": 120,
@@ -167,6 +216,12 @@ ln -sfn "${release_dir}" "${current_link}"
 install -o root -g root -m 0644 \
   "${release_dir}/deploy/bbb-tenant-gateway.service" \
   "${service_file}"
+install -o root -g root -m 0644 \
+  "${release_dir}/deploy/bbb-recording-wasabi.service" \
+  "${wasabi_service_file}"
+install -o root -g root -m 0644 \
+  "${release_dir}/deploy/bbb-recording-wasabi.timer" \
+  "${wasabi_timer_file}"
 
 nginx_backup=""
 if [[ -f "${nginx_file}" ]]; then
@@ -189,6 +244,7 @@ rm -f "${nginx_backup}"
 
 systemctl daemon-reload
 systemctl enable bbb-tenant-gateway.service
+systemctl enable --now bbb-recording-wasabi.timer
 if ! systemctl restart bbb-tenant-gateway.service; then
   if [[ -n "${previous_release}" ]]; then
     ln -sfn "${previous_release}" "${current_link}"

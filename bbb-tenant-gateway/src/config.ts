@@ -19,6 +19,8 @@ interface RawTenantConfig {
   meetingEndedCallbackUrl?: unknown;
   allowModerator?: unknown;
   allowRecording?: unknown;
+  autoStartRecording?: unknown;
+  allowStartStopRecording?: unknown;
   maxConcurrentMeetings?: unknown;
   maxParticipantsPerMeeting?: unknown;
   requestsPerMinute?: unknown;
@@ -159,6 +161,16 @@ function parseTenant(
     ),
     allowModerator: configBoolean(raw.allowModerator, false, `Tenant ${id} allowModerator`),
     allowRecording: configBoolean(raw.allowRecording, false, `Tenant ${id} allowRecording`),
+    autoStartRecording: configBoolean(
+      raw.autoStartRecording,
+      false,
+      `Tenant ${id} autoStartRecording`,
+    ),
+    allowStartStopRecording: configBoolean(
+      raw.allowStartStopRecording,
+      true,
+      `Tenant ${id} allowStartStopRecording`,
+    ),
     maxConcurrentMeetings: configInteger(
       raw.maxConcurrentMeetings,
       10,

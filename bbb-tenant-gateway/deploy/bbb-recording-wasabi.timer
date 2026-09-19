@@ -1,0 +1,12 @@
+[Unit]
+Description=Retry tenant recording uploads to Wasabi
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+RandomizedDelaySec=30s
+Persistent=true
+Unit=bbb-recording-wasabi.service
+
+[Install]
+WantedBy=timers.target

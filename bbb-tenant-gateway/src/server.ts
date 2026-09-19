@@ -146,6 +146,8 @@ export function createApp(config: GatewayConfig, bbbClient: BbbClientLike): expr
       meetingID: bbbMeetingId,
       name,
       record,
+      autoStartRecording: record ? tenant.autoStartRecording : undefined,
+      allowStartStopRecording: record ? tenant.allowStartStopRecording : undefined,
       logoutURL: tenant.logoutUrl,
       meetingEndedURL: tenant.meetingEndedCallbackUrl,
       maxParticipants: tenant.maxParticipantsPerMeeting,

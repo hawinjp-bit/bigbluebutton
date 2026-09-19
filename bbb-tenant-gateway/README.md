@@ -7,9 +7,11 @@
 - One hashed API credential per tenant
 - Tenant namespaces for meeting and user IDs
 - Tenant-specific moderator, recording, participant, concurrency, origin, and request limits
+- Optional tenant policy to start recording automatically when `record: true` is requested
 - Tenant-specific selection of the media bridge types supported by BigBlueButton 3.0
 - Signed BigBlueButton `create`, `join`, `isMeetingRunning`, and `end` calls
 - No BigBlueButton shared secret in tenant configuration or browser code
+- Retried, idempotent copies of completed tenant recordings to Wasabi S3-compatible storage
 
 The in-memory rate and concurrency checks are suitable for a single gateway process. A multi-replica deployment should replace them with shared, atomic counters in Redis or another coordination service.
 
@@ -61,6 +63,34 @@ sudo ./deploy/install.sh /opt/bbb-tenant-gateway/releases/<release>
 
 The installer obtains the upstream URL and shared secret from `bbb-conf --secret` without printing them. It creates the initial `lunar-one` credential at `/etc/bbb-tenant-gateway/lunar-one.api-key` with mode `0600`; retrieve it once through an administrator channel and place it in the tenant backend's secret store.
 
+### Wasabi recording archive
+
+The installer also creates a sandboxed `bbb-recording-wasabi` timer. It is disabled at the configuration level until `/etc/default/bbb-recording-wasabi` contains a bucket and `WASABI_SYNC_ENABLED=true`. Configure a Wasabi remote interactively so the secret is not placed in shell history:
+
+```bash
+sudo rclone config --config /etc/bbb-recording-wasabi/rclone.conf
+sudo chown root:bbb-recording-wasabi /etc/bbb-recording-wasabi/rclone.conf
+sudo chmod 0640 /etc/bbb-recording-wasabi/rclone.conf
+```
+
+Set the remote, bucket, tenant, and prefix in `/etc/default/bbb-recording-wasabi`, then verify and start one sync:
+
+```bash
+sudo -u bbb-recording-wasabi rclone lsd \
+  --config /etc/bbb-recording-wasabi/rclone.conf \
+  wasabi:BUCKET_NAME
+sudo systemctl start bbb-recording-wasabi.service
+sudo journalctl -u bbb-recording-wasabi.service --no-pager
+```
+
+The worker accepts a recording only when the archived BBB metadata contains both `tenantId=lunar-one` and an external meeting ID beginning with `lunar-one:`. Each completed playback format is copied to:
+
+```text
+s3://BUCKET_NAME/tenants/lunar-one/recordings/RECORD_ID/FORMAT/
+```
+
+Uploads use HTTPS through rclone, request AES-256 server-side encryption, run an integrity check, and write a local idempotency marker only after verification. The worker never deletes local BigBlueButton recordings. BBB playback continues to use the local published copy; Wasabi is the durable archive, not the playback origin.
+
 ## API
 
 All tenant endpoints require:
@@ -78,7 +108,7 @@ POST /v1/tenants/lunar-one/meetings
 {
   "meetingId": "course-42-session-7",
   "name": "Course 42",
-  "record": false
+  "record": true
 }
 ```
 
@@ -93,6 +123,8 @@ Response:
 ```
 
 The gateway sends the internal ID `lunar-one:course-42-session-7` to BigBlueButton. Repeating the request is safe; an existing meeting returns HTTP 200 and `created: false`.
+
+When the tenant has `allowRecording` and `autoStartRecording` enabled, `record: true` enables recording and starts it automatically after the meeting begins. A request with `record: false` is not recorded or uploaded.
 
 ### Create a participant join URL
 

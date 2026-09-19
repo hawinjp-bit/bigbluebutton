@@ -10,7 +10,9 @@
       ],
       "logoutUrl": "https://lunar-one.example.com/meetings",
       "allowModerator": true,
-      "allowRecording": false,
+      "allowRecording": true,
+      "autoStartRecording": true,
+      "allowStartStopRecording": true,
       "maxConcurrentMeetings": 20,
       "maxParticipantsPerMeeting": 100,
       "requestsPerMinute": 120,
@@ -22,4 +24,3 @@
     }
   }
 }
-

@@ -66,6 +66,8 @@ export class BbbClient implements BbbClientLike {
       meetingID: options.meetingID,
       name: options.name,
       record: options.record,
+      autoStartRecording: options.autoStartRecording,
+      allowStartStopRecording: options.allowStartStopRecording,
       logoutURL: options.logoutURL,
       meetingEndedURL: options.meetingEndedURL,
       maxParticipants: options.maxParticipants,
@@ -138,4 +140,3 @@ export class BbbClient implements BbbClientLike {
     return parsed;
   }
 }
-

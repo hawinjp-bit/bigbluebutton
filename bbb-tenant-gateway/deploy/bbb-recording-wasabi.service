@@ -1,0 +1,23 @@
+[Unit]
+Description=Copy tenant BigBlueButton recordings to Wasabi
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=bbb-recording-wasabi
+Group=bbb-recording-wasabi
+EnvironmentFile=/etc/default/bbb-recording-wasabi
+ExecStart=/usr/bin/python3 /opt/bbb-tenant-gateway/current/deploy/recording-wasabi-sync.py
+StateDirectory=bbb-recording-wasabi
+UMask=0077
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ReadOnlyPaths=/var/bigbluebutton
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6

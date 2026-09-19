@@ -20,6 +20,8 @@ export interface TenantConfig {
   meetingEndedCallbackUrl?: string;
   allowModerator: boolean;
   allowRecording: boolean;
+  autoStartRecording: boolean;
+  allowStartStopRecording: boolean;
   maxConcurrentMeetings: number;
   maxParticipantsPerMeeting: number;
   requestsPerMinute: number;
@@ -45,6 +47,8 @@ export interface CreateMeetingOptions {
   meetingID: string;
   name: string;
   record: boolean;
+  autoStartRecording?: boolean;
+  allowStartStopRecording?: boolean;
   logoutURL?: string;
   meetingEndedURL?: string;
   maxParticipants: number;
@@ -72,4 +76,3 @@ export interface BbbClientLike {
   isMeetingRunning(meetingID: string): Promise<boolean>;
   endMeeting(meetingID: string): Promise<void>;
 }
-

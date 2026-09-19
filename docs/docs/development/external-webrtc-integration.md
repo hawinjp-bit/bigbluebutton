@@ -278,6 +278,8 @@ The gateway authenticates the tenant, changes an external meeting ID such as `co
 
 Use the gateway for tenant-specific API authentication, origins, moderator and recording permissions, participant limits, concurrent-meeting limits, rate limits, and supported media bridge selection. Strict media-plane isolation requires routing the tenant to a dedicated BigBlueButton server or pool; choosing a bridge type on `create` does not create a tenant-specific SFU endpoint.
 
+For tenant-specific recording archives, keep BBB's recording pipeline and playback files local, then copy completed formats to object storage after publication. The gateway deployment includes an optional Wasabi worker that filters archived event metadata by both tenant ID and namespaced meeting ID, stores objects under a tenant prefix, verifies each copy, retries failures from a systemd timer, and retains the local recording. Object-storage access keys are deployment secrets and must not be returned to the tenant or committed to the source tree.
+
 See `bbb-tenant-gateway/README.md` in the source tree for configuration and request examples.
 
 ## Production checklist

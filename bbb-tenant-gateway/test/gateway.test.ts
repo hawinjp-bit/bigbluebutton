@@ -11,7 +11,7 @@ import type { BbbClientLike, CreateMeetingOptions, JoinOptions } from '../src/ty
 
 const API_KEY = 'bbbtk_lunar-one_test-key';
 
-function testConfig() {
+function testConfig(recordingEnabled = false) {
   return parseConfig({
     version: 1,
     tenants: {
@@ -22,6 +22,9 @@ function testConfig() {
         allowedOrigins: ['https://lunar-one.example.com'],
         logoutUrl: 'https://lunar-one.example.com/meetings',
         allowModerator: true,
+        allowRecording: recordingEnabled,
+        autoStartRecording: recordingEnabled,
+        allowStartStopRecording: true,
         maxConcurrentMeetings: 2,
         maxParticipantsPerMeeting: 50,
       },
@@ -64,9 +67,10 @@ class FakeBbbClient implements BbbClientLike {
 
 async function withGateway(
   callback: (baseUrl: string, fake: FakeBbbClient) => Promise<void>,
+  config = testConfig(),
 ): Promise<void> {
   const fake = new FakeBbbClient();
-  const server: Server = createServer(createApp(testConfig(), fake));
+  const server: Server = createServer(createApp(config, fake));
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const address = server.address();
@@ -189,6 +193,23 @@ test('enforces the tenant recording policy', async () => {
     const body = await response.json() as { error: { code: string } };
     assert.equal(body.error.code, 'recording_not_allowed');
   });
+});
+
+test('applies the tenant automatic recording policy', async () => {
+  await withGateway(async (baseUrl, fake) => {
+    const response = await fetch(`${baseUrl}/v1/tenants/lunar-one/meetings`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${API_KEY}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ meetingId: 'recorded-room', name: 'Recorded Room', record: true }),
+    });
+    assert.equal(response.status, 201);
+    assert.equal(fake.created?.record, true);
+    assert.equal(fake.created?.autoStartRecording, true);
+    assert.equal(fake.created?.allowStartStopRecording, true);
+  }, testConfig(true));
 });
 
 test('issues a join URL with namespaced meeting and user IDs', async () => {
