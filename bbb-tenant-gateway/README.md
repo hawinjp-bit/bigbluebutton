@@ -89,7 +89,7 @@ The worker accepts a recording only when the archived BBB metadata contains both
 s3://BUCKET_NAME/tenants/lunar-one/recordings/RECORD_ID/FORMAT/
 ```
 
-Uploads use HTTPS through rclone, request AES-256 server-side encryption, run an integrity check, and write a local idempotency marker only after verification. The worker never deletes local BigBlueButton recordings. BBB playback continues to use the local published copy; Wasabi is the durable archive, not the playback origin.
+Uploads use HTTPS through rclone, request AES-256 server-side encryption, support a bucket-scoped key without bucket-creation permission, run an integrity check, and write a local idempotency marker only after verification. The worker never deletes local BigBlueButton recordings. BBB playback continues to use the local published copy; Wasabi is the durable archive, not the playback origin.
 
 ## API
 

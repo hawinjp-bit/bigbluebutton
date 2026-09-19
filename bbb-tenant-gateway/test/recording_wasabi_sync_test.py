@@ -108,6 +108,7 @@ class RecordingWasabiSyncTest(unittest.TestCase):
             )
             self.assertEqual(copy_command[1:4], ["copy", str(recording.source), destination])
             self.assertIn("--immutable", copy_command)
+            self.assertIn("--s3-no-check-bucket", copy_command)
             self.assertEqual(check_command[1:4], ["check", str(recording.source), destination])
             self.assertTrue(MODULE.marker_path(settings, recording).is_file())
 

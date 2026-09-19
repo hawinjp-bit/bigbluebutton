@@ -199,6 +199,7 @@ def rclone_command(settings: Settings, operation: str, recording: Recording) -> 
         destination(settings, recording),
         "--config",
         str(settings.rclone_config),
+        "--s3-no-check-bucket",
         "--checksum",
     ]
     if operation == "copy":
