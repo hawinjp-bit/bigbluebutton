@@ -2,7 +2,7 @@
 id: webhooks
 slug: /development/webhooks
 title: Webhooks
-sidebar_position: 7
+sidebar_position: 8
 description: BigBlueButton Webhooks
 keywords:
 - webhooks

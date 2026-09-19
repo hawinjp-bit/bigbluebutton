@@ -2,7 +2,7 @@
 id: localization
 slug: /development/localization
 title: Localization
-sidebar_position: 6
+sidebar_position: 7
 description: BigBlueButton Localization
 keywords:
 - i18n

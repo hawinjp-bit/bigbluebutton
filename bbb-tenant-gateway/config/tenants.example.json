@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "tenants": {
+    "lunar-one": {
+      "apiKeySha256Env": "LUNAR_ONE_API_KEY_SHA256",
+      "meetingIdPrefix": "lunar-one:",
+      "userIdPrefix": "lunar-one:",
+      "allowedOrigins": [
+        "https://lunar-one.example.com"
+      ],
+      "logoutUrl": "https://lunar-one.example.com/meetings",
+      "allowModerator": true,
+      "allowRecording": false,
+      "maxConcurrentMeetings": 20,
+      "maxParticipantsPerMeeting": 100,
+      "requestsPerMinute": 120,
+      "media": {
+        "cameraBridge": "bbb-webrtc-sfu",
+        "screenShareBridge": "bbb-webrtc-sfu",
+        "audioBridge": "bbb-webrtc-sfu"
+      }
+    }
+  }
+}
+

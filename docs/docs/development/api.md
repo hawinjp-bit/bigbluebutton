@@ -31,6 +31,8 @@ import updateRecordingsEndpointTableData from '../data/updateRecordings.tsx';
 
 This document describes the BigBlueButton application programming interface (API).
 
+To launch users from an external application into WebRTC audio, webcam, and screen sharing, see the [External WebRTC Integration guide](/development/external-webrtc-integration). The supported media integration uses this API to launch the BigBlueButton HTML5 client; the internal SFU signaling interfaces are not a stable third-party API.
+
 For developers, this API enables you to
 
 - create meetings

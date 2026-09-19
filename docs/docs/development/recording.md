@@ -2,7 +2,7 @@
 id: recording
 slug: /development/recording
 title: Recording
-sidebar_position: 5
+sidebar_position: 6
 description: BigBlueButton Recording
 keywords:
 - recording
