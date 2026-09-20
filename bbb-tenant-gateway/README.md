@@ -91,6 +91,27 @@ s3://BUCKET_NAME/tenants/lunar-one/recordings/RECORD_ID/FORMAT/
 
 Uploads use HTTPS through rclone, request AES-256 server-side encryption, support a bucket-scoped key without bucket-creation permission, run an integrity check, and write a local idempotency marker only after verification. The worker never deletes local BigBlueButton recordings. BBB playback continues to use the local published copy; Wasabi is the durable archive, not the playback origin.
 
+### meet.ooak.jp branding
+
+`deploy/configure-meet-branding.sh` applies the deployment-specific `meet`
+label, replaces user-visible `BigBlueButton` labels in every installed client
+locale, redirects the help link to the local portal, and disables the default
+PDF presentation. Install it as a persistent post-upgrade customization:
+
+```bash
+sudo install -o root -g root -m 0755 \
+  deploy/configure-meet-branding.sh \
+  /usr/local/sbin/configure-meet-branding
+sudo /usr/local/sbin/configure-meet-branding
+```
+
+Add `/usr/local/sbin/configure-meet-branding` to
+`/etc/bigbluebutton/bbb-conf/apply-config.sh` so package upgrades reapply the
+index and locale changes. Restart `bbb-apps-akka.service` and `bbb-web.service`
+after applying it. Existing meetings retain presentations already loaded into
+that meeting; the disabled default presentation applies to newly created
+meetings.
+
 ## API
 
 All tenant endpoints require:
