@@ -112,13 +112,20 @@ class Recording:
     source: Path
 
 
+def lowercase_keys(values: dict[str, str]) -> dict[str, str]:
+    """BigBlueButton lowercases every meta_ key on create (tenantId -> tenantid)."""
+    return {key.lower(): value for key, value in values.items()}
+
+
 def first_metadata_attributes(events_xml: Path) -> dict[str, str]:
     if not events_xml.is_file():
         return {}
     try:
         for _, element in ET.iterparse(events_xml, events=("start",)):
             if element.tag.rsplit("}", 1)[-1] == "metadata":
-                return dict(element.attrib)
+                return lowercase_keys({
+                    key.rsplit("}", 1)[-1]: value for key, value in element.attrib.items()
+                })
     except (ET.ParseError, OSError) as error:
         print(f"Skipping unreadable recording metadata {events_xml}: {error}", file=sys.stderr)
     return {}
@@ -130,19 +137,21 @@ def published_metadata_values(metadata_xml: Path) -> dict[str, str]:
         for element in root:
             if element.tag.rsplit("}", 1)[-1] != "meta":
                 continue
-            return {
+            return lowercase_keys({
                 child.tag.rsplit("}", 1)[-1]: child.text or ""
                 for child in element
-            }
+            })
     except (ET.ParseError, OSError) as error:
         print(f"Skipping unreadable published metadata {metadata_xml}: {error}", file=sys.stderr)
     return {}
 
 
 def metadata_matches(metadata: dict[str, str], tenant_id: str, meeting_id_prefix: str) -> bool:
+    # Keys are lowercased by the readers: BigBlueButton stores meta_tenantId as
+    # "tenantid" in events.xml and metadata.xml.
     return (
-        metadata.get("tenantId") == tenant_id
-        and metadata.get("meetingId", "").startswith(meeting_id_prefix)
+        metadata.get("tenantid") == tenant_id
+        and metadata.get("meetingid", "").startswith(meeting_id_prefix)
     )
 
 

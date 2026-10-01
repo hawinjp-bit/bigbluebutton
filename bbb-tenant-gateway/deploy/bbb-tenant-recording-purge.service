@@ -1,0 +1,24 @@
+[Unit]
+Description=Purge tenant recordings tombstoned by the BigBlueButton tenant gateway
+After=network-online.target bbb-tenant-gateway.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Runs as root: bbb-record --delete and the gateway's 0700 state directory need it.
+User=root
+Group=root
+ExecStart=/opt/bbb-tenant-gateway/current/deploy/recording-purge.sh
+Environment=HOME=/var/lib/bbb-tenant-recording-purge
+UMask=0077
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+# "full" keeps /usr, /boot and /etc read-only while bbb-record still reaches
+# /var/bigbluebutton and /var/log/bigbluebutton.
+ProtectSystem=full
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6

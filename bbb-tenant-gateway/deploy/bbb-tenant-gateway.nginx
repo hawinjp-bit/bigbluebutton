@@ -1,3 +1,10 @@
+# The gateway's internal listener (127.0.0.1:3198, BigBlueButton's
+# recording-ready callback) must never be reachable through the public proxy.
+# Regex locations win over the prefix block below, so this stays first.
+location ~* ^/tenant-api/internal(/|$) {
+  return 404;
+}
+
 location /tenant-api/ {
   proxy_pass http://127.0.0.1:3199/;
   proxy_http_version 1.1;
@@ -5,5 +12,9 @@ location /tenant-api/ {
   proxy_set_header X-Forwarded-Proto $scheme;
   proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
   client_max_body_size 32k;
+  # Recording downloads are streamed straight from the gateway (Range/206).
+  proxy_buffering off;
+  proxy_request_buffering off;
+  proxy_read_timeout 600s;
+  proxy_max_temp_file_size 0;
 }
-

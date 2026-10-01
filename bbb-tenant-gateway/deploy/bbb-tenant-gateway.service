@@ -14,6 +14,10 @@ ExecStart=/usr/bin/node dist/index.js
 Restart=on-failure
 RestartSec=3
 TimeoutStopSec=15
+# Recording state (meetings.json, webhooks.json, purge/ tombstones) lives in
+# /var/lib/bbb-tenant-gateway; systemd exports it as STATE_DIRECTORY.
+StateDirectory=bbb-tenant-gateway
+StateDirectoryMode=0700
 UMask=0077
 NoNewPrivileges=true
 PrivateDevices=true
@@ -27,4 +31,3 @@ RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 
 [Install]
 WantedBy=multi-user.target
-

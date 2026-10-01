@@ -1,0 +1,11 @@
+[Unit]
+Description=Purge tombstoned tenant recordings every 5 minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+Persistent=true
+Unit=bbb-tenant-recording-purge.service
+
+[Install]
+WantedBy=timers.target

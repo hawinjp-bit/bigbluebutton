@@ -1,10 +1,11 @@
-import { readFileSync } from 'node:fs';
+import { accessSync, constants, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type {
   AudioBridge,
   CameraBridge,
   ChecksumAlgorithm,
   GatewayConfig,
+  RecordingReadyWebhookConfig,
   ScreenShareBridge,
   TenantConfig,
 } from './types.js';
@@ -24,6 +25,9 @@ interface RawTenantConfig {
   maxConcurrentMeetings?: unknown;
   maxParticipantsPerMeeting?: unknown;
   requestsPerMinute?: unknown;
+  recordingRetentionDays?: unknown;
+  maxConcurrentDownloads?: unknown;
+  recordingReadyWebhook?: unknown;
   media?: {
     cameraBridge?: unknown;
     screenShareBridge?: unknown;
@@ -38,10 +42,12 @@ interface RawGatewayConfig {
 
 const TENANT_ID_PATTERN = /^[a-z0-9][a-z0-9-]{1,62}$/;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/i;
+const ENV_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/;
 const CHECKSUM_ALGORITHMS = new Set<ChecksumAlgorithm>(['sha1', 'sha256', 'sha384', 'sha512']);
 const CAMERA_BRIDGES = new Set<CameraBridge>(['bbb-webrtc-sfu', 'livekit']);
 const SCREEN_SHARE_BRIDGES = new Set<ScreenShareBridge>(['bbb-webrtc-sfu', 'livekit']);
 const AUDIO_BRIDGES = new Set<AudioBridge>(['bbb-webrtc-sfu', 'livekit', 'freeswitch']);
+const DEFAULT_WEBHOOK_SCHEDULE_MS = [60_000, 300_000, 900_000, 3_600_000, 21_600_000];
 
 function requiredEnv(environment: NodeJS.ProcessEnv, name: string): string {
   const value = environment[name]?.trim();
@@ -72,22 +78,24 @@ function configBoolean(value: unknown, fallback: boolean, name: string): boolean
   return value;
 }
 
-function optionalHttpsUrl(value: unknown, name: string, allowInsecureHttp: boolean): string | undefined {
-  if (value === undefined) return undefined;
+function parseUrl(value: unknown, name: string, allowInsecureHttp: boolean): URL {
   if (typeof value !== 'string') throw new Error(`${name} must be a URL string`);
-
   let url: URL;
   try {
     url = new URL(value);
   } catch {
     throw new Error(`${name} must be a valid URL`);
   }
-
   if (url.protocol !== 'https:' && !(allowInsecureHttp && url.protocol === 'http:')) {
     throw new Error(`${name} must use HTTPS`);
   }
   if (url.username || url.password) throw new Error(`${name} must not contain URL credentials`);
-  return url.toString();
+  return url;
+}
+
+function optionalHttpsUrl(value: unknown, name: string, allowInsecureHttp: boolean): string | undefined {
+  if (value === undefined) return undefined;
+  return parseUrl(value, name, allowInsecureHttp).toString();
 }
 
 function parseAllowedOrigins(value: unknown, name: string, allowInsecureHttp: boolean): string[] {
@@ -128,6 +136,28 @@ function resolveApiKeyHash(
   const hash = inlineHash ?? requiredEnv(environment, envName!);
   if (!SHA256_PATTERN.test(hash)) throw new Error(`Tenant ${tenantName} API key hash must be SHA-256 hex`);
   return hash.toLowerCase();
+}
+
+function parseWebhook(
+  raw: unknown,
+  environment: NodeJS.ProcessEnv,
+  tenantName: string,
+  allowInsecureHttp: boolean,
+): RecordingReadyWebhookConfig | undefined {
+  if (raw === undefined) return undefined;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error(`Tenant ${tenantName} recordingReadyWebhook must be an object`);
+  }
+  const { url, secretEnv } = raw as { url?: unknown; secretEnv?: unknown };
+  const parsedUrl = parseUrl(url, `Tenant ${tenantName} recordingReadyWebhook.url`, allowInsecureHttp);
+  if (typeof secretEnv !== 'string' || !ENV_NAME_PATTERN.test(secretEnv)) {
+    throw new Error(`Tenant ${tenantName} recordingReadyWebhook.secretEnv must name an environment variable`);
+  }
+  const secret = requiredEnv(environment, secretEnv);
+  if (secret.length < 16) {
+    throw new Error(`Tenant ${tenantName} recordingReadyWebhook secret (${secretEnv}) must be at least 16 characters`);
+  }
+  return { url: parsedUrl.toString(), secret };
 }
 
 function parseTenant(
@@ -192,6 +222,21 @@ function parseTenant(
       1,
       100000,
     ),
+    recordingRetentionDays: configInteger(
+      raw.recordingRetentionDays,
+      30,
+      `Tenant ${id} recordingRetentionDays`,
+      1,
+      3650,
+    ),
+    maxConcurrentDownloads: configInteger(
+      raw.maxConcurrentDownloads,
+      4,
+      `Tenant ${id} maxConcurrentDownloads`,
+      1,
+      64,
+    ),
+    recordingReadyWebhook: parseWebhook(raw.recordingReadyWebhook, environment, id, allowInsecureHttp),
     media: {
       cameraBridge: parseBridge(raw.media?.cameraBridge, CAMERA_BRIDGES, `Tenant ${id} cameraBridge`),
       screenShareBridge: parseBridge(
@@ -202,6 +247,22 @@ function parseTenant(
       audioBridge: parseBridge(raw.media?.audioBridge, AUDIO_BRIDGES, `Tenant ${id} audioBridge`),
     },
   };
+}
+
+function parseSchedule(value: string | undefined): number[] {
+  if (value === undefined || value.trim() === '') return DEFAULT_WEBHOOK_SCHEDULE_MS;
+  const parts = value.split(',').map((part) => Number(part.trim()));
+  if (parts.length === 0 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 7 * 24 * 3_600_000)) {
+    throw new Error('WEBHOOK_RETRY_SCHEDULE_MS must be a comma-separated list of millisecond delays');
+  }
+  return parts;
+}
+
+function publicBaseUrl(environment: NodeJS.ProcessEnv, allowInsecureHttp: boolean): string {
+  const raw = environment.PUBLIC_BASE_URL?.trim() || 'https://meet.ooak.jp/tenant-api';
+  const url = parseUrl(raw, 'PUBLIC_BASE_URL', allowInsecureHttp);
+  if (url.search || url.hash) throw new Error('PUBLIC_BASE_URL must not contain a query or fragment');
+  return url.toString().replace(/\/+$/, '');
 }
 
 export function parseConfig(raw: RawGatewayConfig, environment: NodeJS.ProcessEnv): GatewayConfig {
@@ -235,10 +296,37 @@ export function parseConfig(raw: RawGatewayConfig, environment: NodeJS.ProcessEn
     tenants.set(id, parsed);
   }
   if (tenants.size === 0) throw new Error('At least one tenant must be configured');
+  // A prefix that is itself a prefix of another tenant's would let meeting IDs match two tenants.
+  // 'lunar-one:' and 'lunar-one-staging:' do not overlap; 'lunar-one:' and 'lunar-one:x' do.
+  for (const a of tenants.values()) {
+    for (const b of tenants.values()) {
+      if (a.id === b.id || !b.meetingIdPrefix.startsWith(a.meetingIdPrefix)) continue;
+      throw new Error(
+        `Tenant ${a.id} meetingIdPrefix "${a.meetingIdPrefix}" overlaps tenant ${b.id} meetingIdPrefix "${b.meetingIdPrefix}"`,
+      );
+    }
+  }
+
+  const port = integerValue(environment.PORT, 3100, 'PORT', 1, 65535);
+  const internalPort = integerValue(environment.INTERNAL_PORT, 3198, 'INTERNAL_PORT', 1, 65535);
+  if (internalPort === port) throw new Error('INTERNAL_PORT must differ from PORT');
+
+  const stateDir = environment.STATE_DIRECTORY?.trim();
+  if (!stateDir) throw new Error('Missing environment variable: STATE_DIRECTORY (recording state directory)');
+
+  const readyCallbackUrl = environment.RECORDING_READY_CALLBACK_URL?.trim()
+    || `http://127.0.0.1:${internalPort}/internal/recording-ready`;
+  try {
+    const url = new URL(readyCallbackUrl);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('bad protocol');
+  } catch {
+    throw new Error('RECORDING_READY_CALLBACK_URL must be an http(s) URL');
+  }
 
   return {
     host: environment.HOST?.trim() || '127.0.0.1',
-    port: integerValue(environment.PORT, 3100, 'PORT', 1, 65535),
+    port,
+    internalPort,
     bbb: {
       apiBaseUrl,
       sharedSecret: requiredEnv(environment, 'BBB_SECRET'),
@@ -246,7 +334,37 @@ export function parseConfig(raw: RawGatewayConfig, environment: NodeJS.ProcessEn
       timeoutMs: integerValue(environment.BBB_TIMEOUT_MS, 10000, 'BBB_TIMEOUT_MS', 1000, 60000),
     },
     tenants,
+    recording: {
+      paths: {
+        publishedDir: environment.RECORDING_PUBLISHED_DIR?.trim() || '/var/bigbluebutton/published',
+        unpublishedDir: environment.RECORDING_UNPUBLISHED_DIR?.trim() || '/var/bigbluebutton/unpublished',
+        statusDir: environment.RECORDING_STATUS_DIR?.trim() || '/var/bigbluebutton/recording/status',
+      },
+      stateDir: resolve(stateDir),
+      readyCallbackUrl,
+      publicBaseUrl: publicBaseUrl(environment, allowInsecureHttp),
+      pollIntervalMs: integerValue(environment.RECORDING_POLL_INTERVAL_MS, 60_000, 'RECORDING_POLL_INTERVAL_MS', 100, 86_400_000),
+      retentionSweepIntervalMs: integerValue(
+        environment.RETENTION_SWEEP_INTERVAL_MS,
+        3_600_000,
+        'RETENTION_SWEEP_INTERVAL_MS',
+        100,
+        7 * 86_400_000,
+      ),
+      webhookRetryScheduleMs: parseSchedule(environment.WEBHOOK_RETRY_SCHEDULE_MS),
+    },
   };
+}
+
+/** Fails loudly when the state directory cannot be used: a silent in-memory fallback would hide lost deletions. */
+function assertWritableDirectory(path: string): void {
+  try {
+    mkdirSync(path, { recursive: true, mode: 0o700 });
+    if (!statSync(path).isDirectory()) throw new Error('not a directory');
+    accessSync(path, constants.R_OK | constants.W_OK);
+  } catch (error) {
+    throw new Error(`STATE_DIRECTORY ${path} is not a writable directory: ${(error as Error).message}`);
+  }
 }
 
 export function loadConfig(environment: NodeJS.ProcessEnv = process.env): GatewayConfig {
@@ -257,5 +375,7 @@ export function loadConfig(environment: NodeJS.ProcessEnv = process.env): Gatewa
   } catch (error) {
     throw new Error(`Unable to read tenant configuration ${configPath}: ${(error as Error).message}`);
   }
-  return parseConfig(raw, environment);
+  const config = parseConfig(raw, environment);
+  assertWritableDirectory(config.recording.stateDir);
+  return config;
 }

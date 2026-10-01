@@ -1,0 +1,14 @@
+# Everything that ends up on the Linux host must stay LF even when the release
+# is packaged from a Windows checkout with core.autocrlf=true: a CRLF shebang
+# ("bash\r") breaks install.sh before any guard inside it could run.
+* text=auto
+deploy/** text eol=lf
+*.sh text eol=lf
+*.py text eol=lf
+*.service text eol=lf
+*.timer text eol=lf
+*.nginx text eol=lf
+*.ts text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf

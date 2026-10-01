@@ -12,10 +12,16 @@
       "allowModerator": true,
       "allowRecording": true,
       "autoStartRecording": true,
-      "allowStartStopRecording": true,
+      "allowStartStopRecording": false,
       "maxConcurrentMeetings": 20,
       "maxParticipantsPerMeeting": 100,
       "requestsPerMinute": 120,
+      "recordingRetentionDays": 30,
+      "maxConcurrentDownloads": 4,
+      "recordingReadyWebhook": {
+        "url": "https://lunar-one.example.com/webhooks/bbb-recording",
+        "secretEnv": "LUNAR_ONE_WEBHOOK_SECRET"
+      },
       "media": {
         "cameraBridge": "bbb-webrtc-sfu",
         "screenShareBridge": "bbb-webrtc-sfu",

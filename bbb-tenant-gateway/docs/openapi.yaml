@@ -1,0 +1,1028 @@
+openapi: 3.1.0
+info:
+  title: BigBlueButton Tenant Gateway API
+  version: 1.1.0
+  summary: Per-tenant meeting and recording API in front of BigBlueButton
+  description: |
+    Tenant-scoped API for creating meetings, building join URLs, and retrieving,
+    downloading and deleting recordings. Every tenant endpoint requires
+    `Authorization: Bearer <tenant API key>`. Errors always use the `Error` schema.
+    The human-readable reference is `docs/recording-api.md`.
+  license:
+    name: LGPL-3.0
+    identifier: LGPL-3.0-only
+
+servers:
+  - url: https://meet.ooak.jp/tenant-api
+    description: Production (nginx forwards /tenant-api/ to the gateway)
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: meetings
+    description: Meeting lifecycle (existing endpoints; additive changes only)
+  - name: recordings
+    description: Recording retrieval and deletion
+
+paths:
+  /v1/tenants/{tenant}/meetings:
+    parameters:
+      - $ref: '#/components/parameters/Tenant'
+    post:
+      tags: [meetings]
+      operationId: createMeeting
+      summary: Create a meeting (idempotent per meetingId)
+      description: |
+        Creates the meeting in BigBlueButton under the tenant namespace.
+        `record: true` requires the tenant's `allowRecording`; otherwise the request
+        is rejected with 403 `recording_not_allowed` and nothing is created.
+        With recording enabled the meeting is created with `record=true`,
+        `autoStartRecording` and `allowStartStopRecording` taken from the tenant
+        configuration (the production setting for `lunar-one` is true and false,
+        set during rollout step 2 of the release).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMeetingRequest'
+            example:
+              meetingId: luna-0f3b1b2a-7c7e-4b7a-9f21-2a3f1c6d8e90-5d2a9b1e-4f6c-4a8b-b2c3-9e8f7a6b5c4d
+              name: Weekly planning
+              record: true
+      responses:
+        '201':
+          description: Meeting created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateMeetingResponse'
+              example:
+                meetingId: luna-0f3b1b2a-7c7e-4b7a-9f21-2a3f1c6d8e90-5d2a9b1e-4f6c-4a8b-b2c3-9e8f7a6b5c4d
+                createTime: '1759400000000'
+                created: true
+                record: true
+        '200':
+          description: The meeting already existed; `record` reports the value in force
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateMeetingResponse'
+              example:
+                meetingId: luna-0f3b1b2a-7c7e-4b7a-9f21-2a3f1c6d8e90-5d2a9b1e-4f6c-4a8b-b2c3-9e8f7a6b5c4d
+                createTime: '1759400000000'
+                created: false
+                record: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Recording is disabled for this tenant (`recording_not_allowed`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: recording_not_allowed
+                  message: Recording is disabled for this tenant
+                  requestId: 7d1f1c4e-2b7a-4b1e-9f1a-0c2d3e4f5a6b
+        '404':
+          $ref: '#/components/responses/TenantNotFound'
+        '409':
+          description: Concurrent meeting limit reached (`meeting_limit_reached`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '502':
+          $ref: '#/components/responses/BbbApiError'
+
+  /v1/tenants/{tenant}/meetings/{meetingId}/join:
+    parameters:
+      - $ref: '#/components/parameters/Tenant'
+      - $ref: '#/components/parameters/MeetingId'
+    post:
+      tags: [meetings]
+      operationId: createJoinUrl
+      summary: Build a join URL for one participant (unchanged)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JoinRequest'
+            example:
+              createTime: '1759400000000'
+              userId: user-1842
+              displayName: Ada Lovelace
+              role: VIEWER
+              autoJoinAudio: false
+              autoShareWebcam: false
+      responses:
+        '200':
+          description: Join URL for the participant's browser only; never fetch or log it
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JoinResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Moderator role is disabled for this tenant (`moderator_not_allowed`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/TenantNotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /v1/tenants/{tenant}/meetings/{meetingId}:
+    parameters:
+      - $ref: '#/components/parameters/Tenant'
+      - $ref: '#/components/parameters/MeetingId'
+    get:
+      tags: [meetings]
+      operationId: getMeeting
+      summary: Meeting state including the recording state
+      description: |
+        `running` keeps BigBlueButton's meaning (at least one participant).
+        `record` and `recording` were added; see `MeetingState`.
+      responses:
+        '200':
+          description: Meeting state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeetingState'
+              examples:
+                recording:
+                  summary: Meeting in progress, recording
+                  value:
+                    meetingId: luna-0f3b1b2a-7c7e-4b7a-9f21-2a3f1c6d8e90-5d2a9b1e-4f6c-4a8b-b2c3-9e8f7a6b5c4d
+                    running: true
+                    record: true
+                    recording:
+                      state: recording
+                      recordId: 3a1c8eb5b0f6f2c8c9d1e2f3a4b5c6d7e8f90123-1759400000000
+                ready:
+                  summary: Meeting ended, MP4 published
+                  value:
+                    meetingId: luna-0f3b1b2a-7c7e-4b7a-9f21-2a3f1c6d8e90-5d2a9b1e-4f6c-4a8b-b2c3-9e8f7a6b5c4d
+                    running: false
+                    record: true
+                    recording:
+                      state: ready
+                      recordId: 3a1c8eb5b0f6f2c8c9d1e2f3a4b5c6d7e8f90123-1759400000000
+                noRecordingMarks:
+                  summary: Meeting ended without recording marks
+                  value:
+                    meetingId: luna-0f3b1b2a-7c7e-4b7a-9f21-2a3f1c6d8e90-5d2a9b1e-4f6c-4a8b-b2c3-9e8f7a6b5c4d
+                    running: false
+                    record: true
+                    recording:
+                      state: none
+                      recordId: 3a1c8eb5b0f6f2c8c9d1e2f3a4b5c6d7e8f90123-1759400000000
+                      reason: no_recording_marks
+                unknown:
+                  summary: Meeting gone and never seen by the gateway
+                  value:
+                    meetingId: luna-0f3b1b2a-7c7e-4b7a-9f21-2a3f1c6d8e90-5d2a9b1e-4f6c-4a8b-b2c3-9e8f7a6b5c4d
+                    running: false
+                    record: null
+                    recording:
+                      state: none
+                      recordId: null
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/TenantNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '502':
+          $ref: '#/components/responses/BbbApiError'
+    delete:
+      tags: [meetings]
+      operationId: endMeeting
+      summary: End a running meeting (unchanged; never deletes recordings)
+      responses:
+        '202':
+          description: End request accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [meetingId, status]
+                properties:
+                  meetingId:
+                    type: string
+                  status:
+                    type: string
+                    const: ending
+              example:
+                meetingId: luna-0f3b1b2a-7c7e-4b7a-9f21-2a3f1c6d8e90-5d2a9b1e-4f6c-4a8b-b2c3-9e8f7a6b5c4d
+                status: ending
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/TenantNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '502':
+          $ref: '#/components/responses/BbbApiError'
+
+  /v1/tenants/{tenant}/meetings/{meetingId}/recordings:
+    parameters:
+      - $ref: '#/components/parameters/Tenant'
+      - $ref: '#/components/parameters/MeetingId'
+    get:
+      tags: [recordings]
+      operationId: listRecordings
+      summary: List the meeting's recordings
+      description: |
+        One item per BigBlueButton session of this meeting ID, sorted by `startedAt`
+        ascending. Deleted and expired recordings are omitted. Pause/resume never
+        produces several items: BigBlueButton stitches the segments into one MP4.
+      responses:
+        '200':
+          description: Recording list (possibly empty)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RecordingItem'
+              examples:
+                ready:
+                  summary: One published recording
+                  value:
+                    items:
+                      - recordId: 3a1c8eb5b0f6f2c8c9d1e2f3a4b5c6d7e8f90123-1759400000000
+                        meetingId: luna-0f3b1b2a-7c7e-4b7a-9f21-2a3f1c6d8e90-5d2a9b1e-4f6c-4a8b-b2c3-9e8f7a6b5c4d
+                        state: ready
+                        startedAt: '2026-10-02T01:00:12.000Z'
+                        endedAt: '2026-10-02T01:45:30.000Z'
+                        durationSec: 2718
+                        mime: video/mp4
+                        sizeBytes: 734003200
+                        filename: luna-0f3b1b2a-7c7e-4b7a-9f21-2a3f1c6d8e90-5d2a9b1e-4f6c-4a8b-b2c3-9e8f7a6b5c4d-3a1c8eb5b0f6f2c8c9d1e2f3a4b5c6d7e8f90123-1759400000000.mp4
+                        downloadUrl: https://meet.ooak.jp/tenant-api/v1/tenants/lunar-one/meetings/luna-0f3b1b2a-7c7e-4b7a-9f21-2a3f1c6d8e90-5d2a9b1e-4f6c-4a8b-b2c3-9e8f7a6b5c4d/recordings/3a1c8eb5b0f6f2c8c9d1e2f3a4b5c6d7e8f90123-1759400000000/download
+                        playbackUrl: null
+                        createdAt: '2026-10-02T01:46:10.000Z'
+                        expiresAt: '2026-11-01T01:45:30.000Z'
+                        error: null
+                processing:
+                  summary: Still being processed by BigBlueButton
+                  value:
+                    items:
+                      - recordId: 3a1c8eb5b0f6f2c8c9d1e2f3a4b5c6d7e8f90123-1759400000000
+                        meetingId: luna-0f3b1b2a-7c7e-4b7a-9f21-2a3f1c6d8e90-5d2a9b1e-4f6c-4a8b-b2c3-9e8f7a6b5c4d
+                        state: processing
+                        startedAt: '2026-10-02T01:00:12.000Z'
+                        endedAt: '2026-10-02T01:45:30.000Z'
+                        durationSec: null
+                        mime: null
+                        sizeBytes: null
+                        filename: null
+                        downloadUrl: null
+                        playbackUrl: null
+                        createdAt: null
+                        expiresAt: '2026-11-01T01:45:30.000Z'
+                        error: null
+                noRecordingMarks:
+                  summary: Meeting ended without recording marks
+                  value:
+                    items:
+                      - recordId: 3a1c8eb5b0f6f2c8c9d1e2f3a4b5c6d7e8f90123-1759400000000
+                        meetingId: luna-0f3b1b2a-7c7e-4b7a-9f21-2a3f1c6d8e90-5d2a9b1e-4f6c-4a8b-b2c3-9e8f7a6b5c4d
+                        state: failed
+                        startedAt: null
+                        endedAt: null
+                        durationSec: null
+                        mime: null
+                        sizeBytes: null
+                        filename: null
+                        downloadUrl: null
+                        playbackUrl: null
+                        createdAt: null
+                        expiresAt: null
+                        error: no_recording_marks
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/TenantNotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '502':
+          $ref: '#/components/responses/BbbApiError'
+
+  /v1/tenants/{tenant}/meetings/{meetingId}/recordings/{recordId}/download:
+    parameters:
+      - $ref: '#/components/parameters/Tenant'
+      - $ref: '#/components/parameters/MeetingId'
+      - $ref: '#/components/parameters/RecordId'
+    get:
+      tags: [recordings]
+      operationId: downloadRecording
+      summary: Stream the MP4 file
+      description: |
+        Streams the recording under the tenant Bearer token (no signed URLs).
+        A single `Range` is honoured with 206. Multiple or malformed ranges are
+        ignored (200 full body); a range starting at or beyond the file size,
+        `start > end`, or `bytes=-0` is 416. At most `maxConcurrentDownloads` (4)
+        streams per tenant; each request also counts against the per-minute budget.
+        nginx aborts the response after 600 s without any bytes flowing (no cap on
+        total duration); a gateway restart cuts in-flight downloads after ~10 s.
+        Resume with `Range` after an abort.
+      parameters:
+        - name: Range
+          in: header
+          required: false
+          schema:
+            type: string
+            examples:
+              - bytes=0-1048575
+              - bytes=1048576-
+          description: Single byte range (`bytes=start-end`, `bytes=start-`, `bytes=-suffix`)
+      responses:
+        '200':
+          description: Full file
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                const: video/mp4
+            Content-Length:
+              schema:
+                type: integer
+            Accept-Ranges:
+              schema:
+                type: string
+                const: bytes
+            ETag:
+              schema:
+                type: string
+              description: '`"<size>-<mtimeMs>"`'
+            Content-Disposition:
+              schema:
+                type: string
+              description: 'attachment; filename="<meetingId>-<recordId>.mp4"'
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        '206':
+          description: Partial content for a satisfiable `Range`
+          headers:
+            Content-Range:
+              schema:
+                type: string
+              description: 'bytes <start>-<end>/<size>'
+            Content-Length:
+              schema:
+                type: integer
+              description: Length of the returned range
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/RecordingNotFound'
+        '409':
+          $ref: '#/components/responses/RecordingNotReady'
+        '416':
+          description: Range start beyond the file size, `start > end`, or `bytes=-0` (`range_not_satisfiable`)
+          headers:
+            Content-Range:
+              schema:
+                type: string
+              description: 'bytes */<size>'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: range_not_satisfiable
+                  message: Range not satisfiable
+                  requestId: 7d1f1c4e-2b7a-4b1e-9f1a-0c2d3e4f5a6b
+        '429':
+          description: Per-minute budget (`rate_limited`) or concurrent-download cap (`too_many_downloads`) exceeded
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait (5 for `too_many_downloads`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: too_many_downloads
+                  message: Too many concurrent downloads for this tenant
+                  requestId: 7d1f1c4e-2b7a-4b1e-9f1a-0c2d3e4f5a6b
+    head:
+      tags: [recordings]
+      operationId: headRecording
+      summary: Same headers as the download without a body
+      description: |
+        Mirrors GET: the same status codes and headers (including 206 with
+        `Content-Range` for a satisfiable `Range`), no body. A HEAD request also
+        occupies a concurrent-download slot and one unit of the per-minute budget.
+      parameters:
+        - name: Range
+          in: header
+          required: false
+          schema:
+            type: string
+            examples:
+              - bytes=0-1048575
+              - bytes=1048576-
+          description: Single byte range (`bytes=start-end`, `bytes=start-`, `bytes=-suffix`)
+      responses:
+        '200':
+          description: Headers of the full file
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                const: video/mp4
+            Content-Length:
+              schema:
+                type: integer
+            Accept-Ranges:
+              schema:
+                type: string
+                const: bytes
+            ETag:
+              schema:
+                type: string
+              description: '`"<size>-<mtimeMs>"`'
+            Content-Disposition:
+              schema:
+                type: string
+              description: 'attachment; filename="<meetingId>-<recordId>.mp4"'
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+        '206':
+          description: Headers for a satisfiable `Range`
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                const: video/mp4
+            Content-Range:
+              schema:
+                type: string
+              description: 'bytes <start>-<end>/<size>'
+            Content-Length:
+              schema:
+                type: integer
+              description: Length of the range that a GET would return
+            Accept-Ranges:
+              schema:
+                type: string
+                const: bytes
+            ETag:
+              schema:
+                type: string
+              description: '`"<size>-<mtimeMs>"`'
+            Content-Disposition:
+              schema:
+                type: string
+              description: 'attachment; filename="<meetingId>-<recordId>.mp4"'
+            Cache-Control:
+              schema:
+                type: string
+                const: no-store
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/RecordingNotFound'
+        '409':
+          $ref: '#/components/responses/RecordingNotReady'
+        '416':
+          description: Range start beyond the file size, `start > end`, or `bytes=-0` (`range_not_satisfiable`)
+          headers:
+            Content-Range:
+              schema:
+                type: string
+              description: 'bytes */<size>'
+        '429':
+          description: Per-minute budget (`rate_limited`) or concurrent-download cap (`too_many_downloads`) exceeded
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Seconds to wait (5 for `too_many_downloads`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: too_many_downloads
+                  message: Too many concurrent downloads for this tenant
+                  requestId: 7d1f1c4e-2b7a-4b1e-9f1a-0c2d3e4f5a6b
+
+  /v1/tenants/{tenant}/meetings/{meetingId}/recordings/{recordId}:
+    parameters:
+      - $ref: '#/components/parameters/Tenant'
+      - $ref: '#/components/parameters/MeetingId'
+      - $ref: '#/components/parameters/RecordId'
+    delete:
+      tags: [recordings]
+      operationId: deleteRecording
+      summary: Delete one recording (logical at once, physical within 10 minutes)
+      description: |
+        Allowed only in a terminal state (`ready`, `failed`, or `none` due to
+        `no_recording_marks`). After 202 the recording is invisible: the list omits
+        it, the meeting reports `state: none` with `reason: deleted`, and download or
+        a second DELETE answer 404. A root purge timer removes every local copy and
+        the Wasabi archive within ten minutes.
+      responses:
+        '202':
+          description: Deletion accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [recordId, status]
+                properties:
+                  recordId:
+                    type: string
+                  status:
+                    type: string
+                    const: deleting
+              example:
+                recordId: 3a1c8eb5b0f6f2c8c9d1e2f3a4b5c6d7e8f90123-1759400000000
+                status: deleting
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/RecordingNotFound'
+        '409':
+          $ref: '#/components/responses/RecordingNotReady'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          description: The deletion request could not be persisted; nothing changed, retry (`recording_delete_unavailable`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error:
+                  code: recording_delete_unavailable
+                  message: The deletion could not be recorded; retry
+                  requestId: 7d1f1c4e-2b7a-4b1e-9f1a-0c2d3e4f5a6b
+
+  /healthz:
+    get:
+      operationId: healthz
+      summary: Liveness probe (no authentication)
+      security: []
+      responses:
+        '200':
+          description: Gateway is up
+
+webhooks:
+  recordingEvent:
+    post:
+      summary: Recording ready / failed notification
+      description: |
+        Sent to the tenant's configured `recordingReadyWebhook.url`. Signed with
+        `X-Gateway-Signature: v1=<hex HMAC-SHA256(secret, "v1:" + timestamp + ":" + rawBody)>`
+        where `timestamp` is the `X-Gateway-Timestamp` header (Unix seconds, recomputed
+        on every attempt). Any 2xx is a success; redirects are not followed; 10 s timeout.
+        Retries after 1 min, 5 min, 15 min, 1 h, 6 h. At most one `recording.ready` and
+        one `recording.failed` per `recordId`, never `failed` after `ready`.
+        Deduplicate on `X-Gateway-Event-Id`.
+      parameters:
+        - name: X-Gateway-Timestamp
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: '^[0-9]{1,12}$'
+          example: '1759400000'
+        - name: X-Gateway-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: '^v1=[a-f0-9]{64}$'
+          example: v1=d48d940d5050d548aab049b1d0f1059fd17cec6a4078c07a1d415d850a02d2b8
+        - name: X-Gateway-Event-Id
+          in: header
+          required: true
+          schema:
+            type: string
+          example: 3a1c8eb5b0f6f2c8c9d1e2f3a4b5c6d7e8f90123-1759400000000:recording.ready
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookEvent'
+            examples:
+              ready:
+                summary: Signed with secret example-secret-0123456789 and timestamp 1759400000 (real bodies carry millisecond precision, e.g. 2026-10-02T02:10:00.000Z; the shortened value keeps the test vector short)
+                value:
+                  event: recording.ready
+                  tenant: lunar-one
+                  meetingId: luna-0f3b1b2a-7c7e-4b7a-9f21-2a3f1c6d8e90-5d2a9b1e-4f6c-4a8b-b2c3-9e8f7a6b5c4d
+                  recordId: 3a1c8eb5b0f6f2c8c9d1e2f3a4b5c6d7e8f90123-1759400000000
+                  occurredAt: '2026-10-02T02:10:00Z'
+              failed:
+                value:
+                  event: recording.failed
+                  tenant: lunar-one
+                  meetingId: luna-0f3b1b2a-7c7e-4b7a-9f21-2a3f1c6d8e90-5d2a9b1e-4f6c-4a8b-b2c3-9e8f7a6b5c4d
+                  recordId: 3a1c8eb5b0f6f2c8c9d1e2f3a4b5c6d7e8f90123-1759400000000
+                  occurredAt: '2026-10-02T02:10:00Z'
+                  error: no_recording_marks
+      responses:
+        '2XX':
+          description: Delivery acknowledged; any other status triggers a retry
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Tenant API key
+
+  parameters:
+    Tenant:
+      name: tenant
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: '^[a-z0-9][a-z0-9-]{1,62}$'
+      example: lunar-one
+    MeetingId:
+      name: meetingId
+      in: path
+      required: true
+      description: The tenant's own meeting ID (the gateway adds the tenant prefix internally)
+      schema:
+        $ref: '#/components/schemas/MeetingId'
+    RecordId:
+      name: recordId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/RecordId'
+
+  responses:
+    BadRequest:
+      description: Invalid request (`invalid_request` for a malformed field or any other unreadable body, `invalid_json` for syntactically invalid JSON)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: invalid_request
+              message: meetingId must be 1-128 characters using letters, numbers, dot, underscore, tilde, or hyphen
+              requestId: 7d1f1c4e-2b7a-4b1e-9f1a-0c2d3e4f5a6b
+    PayloadTooLarge:
+      description: JSON request body larger than 32 KiB (`payload_too_large`); nginx enforces the same limit
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: payload_too_large
+              message: Request body exceeds 32 KiB
+              requestId: 7d1f1c4e-2b7a-4b1e-9f1a-0c2d3e4f5a6b
+    UnsupportedMediaType:
+      description: Request body uses an unsupported charset or Content-Encoding (`unsupported_media_type`)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: unsupported_media_type
+              message: Unsupported charset or content encoding
+              requestId: 7d1f1c4e-2b7a-4b1e-9f1a-0c2d3e4f5a6b
+    Unauthorized:
+      description: Missing or wrong Bearer token (`unauthorized`)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    TenantNotFound:
+      description: Unknown tenant (`tenant_not_found`)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    RecordingNotFound:
+      description: Unknown, malformed, other tenant's, or already deleted recording (`recording_not_found`)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: recording_not_found
+              message: Recording not found
+              requestId: 7d1f1c4e-2b7a-4b1e-9f1a-0c2d3e4f5a6b
+    RecordingNotReady:
+      description: The recording is not in a state that allows this operation (`recording_not_ready`)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error:
+              code: recording_not_ready
+              message: 'Recording is not ready (state: processing)'
+              requestId: 7d1f1c4e-2b7a-4b1e-9f1a-0c2d3e4f5a6b
+    RateLimited:
+      description: Per-minute budget exceeded (`rate_limited`)
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: Seconds to wait before retrying
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    BbbApiError:
+      description: BigBlueButton rejected or failed the upstream call (`bbb_api_error`)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    MeetingId:
+      type: string
+      pattern: '^[A-Za-z0-9][A-Za-z0-9._~-]{0,127}$'
+      example: luna-0f3b1b2a-7c7e-4b7a-9f21-2a3f1c6d8e90-5d2a9b1e-4f6c-4a8b-b2c3-9e8f7a6b5c4d
+    RecordId:
+      type: string
+      description: BigBlueButton internal meeting ID, sha1hex(bbb meeting id) + "-" + createTime
+      pattern: '^[a-f0-9]{40}-[0-9]{10,16}$'
+      example: 3a1c8eb5b0f6f2c8c9d1e2f3a4b5c6d7e8f90123-1759400000000
+    CreateTime:
+      type: string
+      description: BigBlueButton createTime, milliseconds since the epoch as a decimal string
+      pattern: '^[0-9]+$'
+      example: '1759400000000'
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, requestId]
+          properties:
+            code:
+              type: string
+              enum:
+                - invalid_request
+                - invalid_json
+                - unauthorized
+                - origin_not_allowed
+                - recording_not_allowed
+                - moderator_not_allowed
+                - tenant_not_found
+                - not_found
+                - recording_not_found
+                - meeting_limit_reached
+                - recording_not_ready
+                - payload_too_large
+                - unsupported_media_type
+                - range_not_satisfiable
+                - rate_limited
+                - too_many_downloads
+                - internal_error
+                - bbb_api_error
+                - recording_delete_unavailable
+            message:
+              type: string
+            requestId:
+              type: string
+
+    CreateMeetingRequest:
+      type: object
+      required: [meetingId, name]
+      properties:
+        meetingId:
+          $ref: '#/components/schemas/MeetingId'
+        name:
+          type: string
+          minLength: 2
+          maxLength: 128
+        record:
+          type: boolean
+          default: false
+          description: Record this meeting. Requires the tenant's `allowRecording`.
+
+    CreateMeetingResponse:
+      type: object
+      required: [meetingId, createTime, created, record]
+      properties:
+        meetingId:
+          $ref: '#/components/schemas/MeetingId'
+        createTime:
+          $ref: '#/components/schemas/CreateTime'
+        created:
+          type: boolean
+          description: false when the meeting already existed
+        record:
+          type: boolean
+          description: The record flag actually in force for the meeting
+
+    JoinRequest:
+      type: object
+      required: [createTime, userId, displayName, role]
+      properties:
+        createTime:
+          $ref: '#/components/schemas/CreateTime'
+        userId:
+          type: string
+        displayName:
+          type: string
+        role:
+          type: string
+          enum: [MODERATOR, VIEWER]
+        autoJoinAudio:
+          type: boolean
+          default: false
+        autoShareWebcam:
+          type: boolean
+          default: false
+
+    JoinResponse:
+      type: object
+      required: [meetingId, joinUrl]
+      properties:
+        meetingId:
+          $ref: '#/components/schemas/MeetingId'
+        joinUrl:
+          type: string
+          format: uri
+
+    RecordingState:
+      type: string
+      description: |
+        none: no recording (not started, no recording marks, deleted or expired);
+        recording: meeting in progress with participants and record=true;
+        processing: meeting ended, BigBlueButton pipeline running;
+        ready: MP4 published; failed: a failure marker, no_recording_marks or timeout.
+      enum: [none, recording, processing, ready, failed]
+
+    MeetingState:
+      type: object
+      required: [meetingId, running, record, recording]
+      properties:
+        meetingId:
+          $ref: '#/components/schemas/MeetingId'
+        running:
+          type: boolean
+          description: At least one participant is in the meeting (BigBlueButton semantics)
+        record:
+          type: [boolean, 'null']
+          description: The meeting's record flag; null when the meeting is gone and unknown to the gateway
+        recording:
+          type: object
+          required: [state, recordId]
+          properties:
+            state:
+              $ref: '#/components/schemas/RecordingState'
+            recordId:
+              oneOf:
+                - $ref: '#/components/schemas/RecordId'
+                - type: 'null'
+            reason:
+              type: string
+              description: Present for `none`/`failed` when known (no_recording_marks, deleted, expired, timeout, or a BigBlueButton marker name)
+
+    RecordingItem:
+      type: object
+      required:
+        - recordId
+        - meetingId
+        - state
+        - startedAt
+        - endedAt
+        - durationSec
+        - mime
+        - sizeBytes
+        - filename
+        - downloadUrl
+        - playbackUrl
+        - createdAt
+        - expiresAt
+        - error
+      properties:
+        recordId:
+          $ref: '#/components/schemas/RecordId'
+        meetingId:
+          $ref: '#/components/schemas/MeetingId'
+        state:
+          type: string
+          enum: [processing, ready, failed]
+        startedAt:
+          type: [string, 'null']
+          format: date-time
+        endedAt:
+          type: [string, 'null']
+          format: date-time
+        durationSec:
+          type: [integer, 'null']
+          description: Length of the MP4 in whole seconds (sum of recorded segments); null unless ready
+        mime:
+          type: [string, 'null']
+          enum: [video/mp4, null]
+        sizeBytes:
+          type: [integer, 'null']
+          description: Equals the download's Content-Length
+        filename:
+          type: [string, 'null']
+          description: '<meetingId>-<recordId>.mp4'
+        downloadUrl:
+          type: [string, 'null']
+          format: uri
+          description: Absolute download URL; present only when ready; requires the Bearer token
+        playbackUrl:
+          type: 'null'
+          description: Always null (BigBlueButton playback pages are public-by-URL)
+        createdAt:
+          type: [string, 'null']
+          format: date-time
+          description: When the MP4 was published; null unless ready
+        expiresAt:
+          type: [string, 'null']
+          format: date-time
+          description: endedAt + recordingRetentionDays (30 for lunar-one)
+        error:
+          type: [string, 'null']
+          description: Failure reason when failed (no_recording_marks, timeout, or a marker name)
+
+    WebhookEvent:
+      type: object
+      required: [event, tenant, meetingId, recordId, occurredAt]
+      properties:
+        event:
+          type: string
+          enum: [recording.ready, recording.failed]
+        tenant:
+          type: string
+        meetingId:
+          $ref: '#/components/schemas/MeetingId'
+        recordId:
+          $ref: '#/components/schemas/RecordId'
+        occurredAt:
+          type: string
+          format: date-time
+        error:
+          type: string
+          description: Only on recording.failed

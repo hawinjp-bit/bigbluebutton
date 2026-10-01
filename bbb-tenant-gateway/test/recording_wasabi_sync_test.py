@@ -44,8 +44,10 @@ class RecordingWasabiSyncTest(unittest.TestCase):
     ) -> None:
         published = settings.published_dir / playback_format / record_id
         published.mkdir(parents=True)
+        # BigBlueButton lowercases meta_ keys (tenantid) but keeps its own
+        # entries camelCase (meetingId); the readers must accept both.
         published_body = (
-            f'<recording><meta><tenantId>{tenant_id}</tenantId>'
+            f'<recording><meta><tenantid>{tenant_id}</tenantid>'
             f'<meetingId>{meeting_id}</meetingId></meta></recording>'
             if published_metadata
             else "<recording />"
@@ -55,7 +57,7 @@ class RecordingWasabiSyncTest(unittest.TestCase):
             raw = settings.raw_dir / record_id
             raw.mkdir(parents=True)
             (raw / "events.xml").write_text(
-                f'<recording><metadata tenantId="{tenant_id}" '
+                f'<recording><metadata tenantid="{tenant_id}" '
                 f'meetingId="{meeting_id}" /></recording>',
                 encoding="utf-8",
             )
@@ -111,6 +113,33 @@ class RecordingWasabiSyncTest(unittest.TestCase):
             self.assertIn("--s3-no-check-bucket", copy_command)
             self.assertEqual(check_command[1:4], ["check", str(recording.source), destination])
             self.assertTrue(MODULE.marker_path(settings, recording).is_file())
+
+    def test_metadata_readers_lowercase_keys(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            events_xml = root / "events.xml"
+            events_xml.write_text(
+                '<recording><metadata tenantId="lunar-one" MeetingId="lunar-one:m" />'
+                "</recording>",
+                encoding="utf-8",
+            )
+            metadata_xml = root / "metadata.xml"
+            metadata_xml.write_text(
+                "<recording><meta><tenantid>lunar-one</tenantid>"
+                "<meetingId>lunar-one:m</meetingId></meta></recording>",
+                encoding="utf-8",
+            )
+
+            raw_values = MODULE.first_metadata_attributes(events_xml)
+            published_values = MODULE.published_metadata_values(metadata_xml)
+
+            self.assertEqual(raw_values, {"tenantid": "lunar-one", "meetingid": "lunar-one:m"})
+            self.assertEqual(
+                published_values, {"tenantid": "lunar-one", "meetingid": "lunar-one:m"}
+            )
+            self.assertTrue(MODULE.metadata_matches(raw_values, "lunar-one", "lunar-one:"))
+            self.assertTrue(MODULE.metadata_matches(published_values, "lunar-one", "lunar-one:"))
+            self.assertFalse(MODULE.metadata_matches({"tenantId": "lunar-one"}, "lunar-one", ""))
 
     def test_rejects_parent_directory_in_object_prefix(self):
         with self.assertRaises(ValueError):
