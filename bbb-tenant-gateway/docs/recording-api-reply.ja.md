@@ -4,7 +4,8 @@
 - 差出: meet.ooak.jp Tenant Gateway 運用
 - 日付: 2026-10-02
 - 対象テナント: `lunar-one`（ベース URL `https://meet.ooak.jp/tenant-api/v1/tenants/lunar-one`）
-- 関連文書: 英語の API 仕様 `docs/recording-api.md`、OpenAPI 3.1 `docs/openapi.yaml`（いずれも bbb-tenant-gateway リポジトリ内）
+- 関連文書: 英語の API 仕様 `docs/recording-api.md`、OpenAPI 3.1 `docs/openapi.yaml`（いずれも bbb-tenant-gateway リポジトリ内。GitHub: `hawinjp-bit/bigbluebutton` ブランチ `codex/tenant-gateway` の `bbb-tenant-gateway/docs/`。本回答と同じフォルダにコピーも置いています）
+- 適用リリース: コミット `6bc02c265c`（本番 `meet.ooak.jp`、2026-10-02 03:00 JST 適用）
 
 このたびはご依頼ありがとうございます。2026-10-02 付のご依頼文の各項目について、以下のとおり回答いたします。
 
@@ -221,5 +222,26 @@ def verify(secret: str, headers: dict, raw_body: bytes) -> bool:
 - アクセスログに token や joinUrl は残しません。ダウンロードのログは requestId、テナント、recordId、ステータス、送信バイト数のみです。
 - 録画の保存場所: 本体は `meet.ooak.jp` の `/var/bigbluebutton/published/video/<recordId>/video-0.m4v`（処理の元データは `/var/bigbluebutton/recording/raw/<recordId>`）、アーカイブは Wasabi `wasabi:webrtc/tenants/lunar-one/recordings/<recordId>/`（サーバー側 AES-256 暗号化）です。保持期間は会議終了から 30 日です。
 - 削除の確実性: DELETE の応答時点で API からは不可視になり、root 権限の purge タイマーが 10 分以内に本体・元データ・ステータス・アーカイブをすべて物理削除します。purge が失敗した場合は削除要求が残り、成功するまで 5 分ごとに再試行します（失敗は systemd のログで運用側が監視します）。
+
+## 8. 実機での検証結果（2026-10-02、検証用テナント `lunar-one-staging`）
+
+本番サーバー上で、ご依頼の一連の流れを実際に通して確認しました。
+
+| 手順 | 結果 |
+| --- | --- |
+| `POST /meetings`（`record: true`） | `201`、応答 `"record": true` |
+| 入室前の `GET /meetings/{id}` | `running: false`、`recording.state: "none"`、`recordId` 付与済み |
+| 入室後（録画は自動開始、画面上部に録画表示） | `running: true`、`recording.state: "recording"` |
+| 会議終了（`DELETE /meetings/{id}`）直後 | `recording.state: "processing"` |
+| `ready` まで | 終了から約 50 秒（presentation 形式 15 秒、mp4 49 秒） |
+| 一覧 | `state: "ready"`、`durationSec: 102`、`sizeBytes: 224583`、`mime: "video/mp4"`、`expiresAt` = 終了 + 30 日 |
+| `HEAD` ダウンロード | `200`、`Content-Type: video/mp4`、`Content-Length`、`Accept-Ranges: bytes`、`ETag`、`Content-Disposition` |
+| `Range: bytes=0-99` | `206`、`Content-Range: bytes 0-99/224583` |
+| 全体ダウンロード | `200`、受信ファイルの SHA-256 がサーバー上の mp4 と一致、ffprobe で H.264 + AAC・102 秒 |
+| token なし | `401` |
+| `DELETE …/recordings/{recordId}` | `202 {"status":"deleting"}` → 直後にダウンロード `404`、2 回目の DELETE `404`、`GET /meetings/{id}` は `state: "none"`、`reason: "deleted"`、BigBlueButton の再生 URL も `404` |
+| 物理削除（purge タイマー） | 公開・未公開・raw・ステータスのすべてが消え、BigBlueButton の `getRecordings` は `noRecordings`。アーカイブ側も確認済み |
+
+Webhook（依頼 C）は通知先 URL と秘密鍵をいただいてから有効化しますので、実機での送信確認は登録後に行います（署名ロジックは自動テストで検証済みです）。
 
 ご不明な点や、仕様書の記載と実際の挙動に差異がありましたら、requestId を添えてお知らせください。
