@@ -262,8 +262,10 @@ intake_tombstones() {
 # ---------------------------------------------------------------------------
 recording_owner() {
   local record_id="$1"
+  # The pattern is passed under a different name: TENANT_ID_PATTERN is readonly
+  # in this shell, and a command-prefix assignment to a readonly variable fails.
   RECORD_ID="${record_id}" BBB_DIR="${bbb_dir}" TENANTS_FILE="${tenants_file}" \
-  TENANT_ID_PATTERN="${TENANT_ID_PATTERN}" python3 - <<'PY'
+  TENANT_PATTERN="${TENANT_ID_PATTERN}" python3 - <<'PY'
 import glob
 import json
 import os
@@ -274,7 +276,7 @@ import xml.etree.ElementTree as ET
 record_id = os.environ["RECORD_ID"]
 bbb_dir = os.environ["BBB_DIR"]
 tenants_file = os.environ["TENANTS_FILE"]
-tenant_pattern = re.compile(os.environ["TENANT_ID_PATTERN"])
+tenant_pattern = re.compile(os.environ["TENANT_PATTERN"])
 
 
 def local_name(tag):

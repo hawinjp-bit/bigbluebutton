@@ -92,7 +92,7 @@
 
 **一時停止・再開**: `allowStartStopRecording=false` のため通常は発生しませんが、仮に録画区間が分かれた場合も BigBlueButton が 1 本の mp4 に結合して出力します。録画されていない区間は含まれません。したがって `durationSec` は録画区間の合計で、`endedAt - startedAt` より短いことがあります。一覧は常に 1 会議セッションにつき 1 件です。
 
-**`ready` になるまでの目安**: 会議終了後、処理時間はおおむね会議時間の数分〜十数% 程度です。短い会議なら 1〜2 分、実測では 2 分弱の会議で約 40 秒でした。毎時同期と「今すぐ同期」で確認いただく運用で問題ありませんが、依頼 C の Webhook を使っていただければ完成直後に通知します。
+**`ready` になるまでの目安**: 会議終了後、処理時間はおおむね会議時間の数分〜十数% 程度です。短い会議なら 1〜2 分です。実測（2026-10-02、約 2.5 分の会議）では、終了から 15 秒で presentation 形式、49 秒で mp4（video 形式）が完成し、API が `ready` を返したのは終了の約 50 秒後でした。毎時同期と「今すぐ同期」で確認いただく運用で問題ありませんが、依頼 C の Webhook を使っていただければ完成直後に通知します。
 
 ### 4.2 ダウンロード `GET /meetings/{meetingId}/recordings/{recordId}/download`
 
@@ -199,7 +199,7 @@ def verify(secret: str, headers: dict, raw_body: bytes) -> bool:
    | 429 | `rate_limited` / `too_many_downloads` | レート制限・同時ダウンロード上限（`Retry-After` 付き） |
    | 503 | `recording_delete_unavailable` | 削除要求を保存できなかった（何も変更されていないので再試行） |
 
-3. **形式・目安・保持**: mp4（H.264 1280x720 + AAC）1 本。`ready` までは会議時間の数分〜十数% 程度（短い会議で 1〜2 分、実測で 2 分弱の会議が約 40 秒）。Gateway 側の保持は会議終了から 30 日（`expiresAt`）、その後自動削除。
+3. **形式・目安・保持**: mp4（H.264 1280x720 + AAC）1 本。`ready` までは会議時間の数分〜十数% 程度（短い会議で 1〜2 分、実測では約 2.5 分の会議が終了の約 50 秒後に `ready`）。Gateway 側の保持は会議終了から 30 日（`expiresAt`）、その後自動削除。
 4. **現在の `allowRecording` と拒否時の挙動**: `lunar-one` の `allowRecording` は現在 **true** です。録画禁止のテナントで `record: true` を受けた場合は、以前から `403` + `recording_not_allowed` で拒否しており、黙って録画なしで作ることはありません。
 5. **検証用テナントと token**: `lunar-one-staging` を用意しました。ベース URL は `https://meet.ooak.jp/tenant-api/v1/tenants/lunar-one-staging` です（会議 ID の名前空間は本番と別で、`lunar-one` の会議・録画には届きません）。token はサーバー `hostinger`（meet.ooak.jp）の `/etc/bbb-tenant-gateway/lunar-one-staging.api-key`（root のみ読み取り可）にあります。SaaS 側のご担当者が ssh で読み取り、`/opt/luna-one/.env` に直接入れてください。チャットや文書には書きません。ご希望があれば本番 `lunar-one` の token も同様に再発行できます。
 6. **レート制限と同時接続数**: 1 テナントあたり 120 リクエスト/分（ダウンロードを含む）、同時会議 20、同時ダウンロード 4、1 会議の最大参加者 100。超過時は `429`（`rate_limited` または `too_many_downloads`）と `Retry-After` ヘッダ（秒）を返しますので、その秒数待ってから再試行してください。同時会議の超過は `409` + `meeting_limit_reached` です。§6 に記載の毎時同期（未終了の会議ごとに `GET /meetings/{id}`、終了済みで録画未取得の会議ごとに `GET …/recordings` を 1 回ずつ）は、同時会議 20 件の規模では制限内に収まります。

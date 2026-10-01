@@ -201,7 +201,7 @@ Notes:
 - Only the `video` format is exposed. BigBlueButton also processes a `presentation` (HTML) format independently; its markers are ignored, so a failed presentation build does not hide a successfully published MP4, and a successfully published presentation does not make a recording `ready` before the MP4 exists.
 - `ready` is terminal: once a recording has been reported `ready` it never changes to `failed` (a later marker is ignored) and at most one `recording.ready` webhook is sent.
 - States are evaluated on every request (no caching), so a recording that becomes ready between two calls is visible on the next call.
-- Timing: BigBlueButton starts processing when the meeting ends. On the production host a two-minute meeting became `ready` roughly 40 seconds after it ended; longer meetings take about a few percent to a bit over ten percent of their length. Plan for one to two minutes for short meetings and poll hourly plus on demand, or use the webhook.
+- Timing: BigBlueButton starts processing when the meeting ends. Measured on the production host (2026-10-02): a 2.5-minute meeting had its presentation format published 15 s after the end and its MP4 (video format) 49 s after the end, so the API reported `ready` about 50 s after the meeting ended; longer meetings take about a few percent to a bit over ten percent of their length. Plan for one to two minutes for short meetings and poll hourly plus on demand, or use the webhook.
 
 ## 4. Download semantics
 
