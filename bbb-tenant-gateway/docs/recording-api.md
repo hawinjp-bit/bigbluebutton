@@ -517,3 +517,15 @@ Buffering is disabled so that a 700 MB download is streamed instead of spooled t
 | Physical purge after deletion | within 10 minutes |
 | Webhook attempts | 6 (immediately, +1 min, +5 min, +15 min, +1 h, +6 h), 10 s timeout each |
 | Gateway state retention | sessions pruned from `meetings.json` after 90 days |
+
+
+### Silent recordings (audio track at -91 dB)
+
+With `audioBridge=livekit` the conference audio never reaches FreeSWITCH; `bbb-webrtc-recorder` records every LiveKit microphone track and the recording pipeline mixes those files. The recorder needs the LiveKit API key (written by `bbb-livekit` to `/etc/default/bbb-webrtc-recorder`) and reads it only at start. A recorder process without it answers `failed to build recorder token: missing API key or secret key` (visible in `/var/log/bbb-webrtc-sfu/bbb-webrtc-sfu.log` as `LiveKitWebRTCRecorderManager: Failed to start recording`) and every recording comes out silent. Check with:
+
+```bash
+sudo tr ' ' '
+' < /proc/$(systemctl show -p MainPID --value bbb-webrtc-recorder)/environ | grep -c '^BBBRECORDER_LIVEKIT_APIKEY='
+```
+
+`0` means restart `bbb-webrtc-recorder` (the provisioning kit's `15-bbb-tune.sh` does this and `90-verify.sh` checks it). A participant who stays muted is also recorded as silence; that is expected.
