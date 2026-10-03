@@ -37,6 +37,8 @@ export interface TenantConfig {
   maxConcurrentDownloads: number;
   recordingReadyWebhook?: RecordingReadyWebhookConfig;
   media: TenantMediaConfig;
+  /** Absolute URLs of BigBlueButton HTML5 plugin manifests loaded into every meeting of the tenant. */
+  pluginManifests: string[];
 }
 
 export interface RecordingPaths {
@@ -93,6 +95,8 @@ export interface CreateMeetingOptions {
   cameraBridge?: CameraBridge;
   screenShareBridge?: ScreenShareBridge;
   audioBridge?: AudioBridge;
+  /** Sent as pluginManifests=[{"url":...}, ...] when non-empty. */
+  pluginManifests?: string[];
   tenantId: string;
 }
 

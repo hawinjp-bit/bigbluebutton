@@ -74,6 +74,21 @@ export INTERNAL_PORT=3198                                # loopback listener for
 
 Per-tenant options in `tenants.json`: `recordingRetentionDays` (default 30), `maxConcurrentDownloads` (default 4) and an optional `recordingReadyWebhook: { "url", "secretEnv" }` whose secret (16+ characters) is read from the named environment variable.
 
+| Tenant option | Default | Notes |
+| --- | --- | --- |
+| `allowModerator` | `false` | Allows `role: "MODERATOR"` on join |
+| `allowRecording` | `false` | `record: true` is rejected with 403 when false |
+| `autoStartRecording` | `false` | Applied to BigBlueButton when `record: true` |
+| `allowStartStopRecording` | `true` | Applied when `record: true`; `false` prevents moderators from pausing |
+| `maxConcurrentMeetings` | `10` | 1 to 10000 |
+| `maxParticipantsPerMeeting` | `100` | 1 to 10000 |
+| `requestsPerMinute` | `120` | 1 to 100000 |
+| `recordingRetentionDays` | `30` | 1 to 3650 |
+| `maxConcurrentDownloads` | `4` | 1 to 64 |
+| `recordingReadyWebhook` | none | `{ "url": "https://...", "secretEnv": "NAME" }` |
+| `media` | `{}` | `cameraBridge`, `screenShareBridge`, `audioBridge` |
+| `pluginManifests` | `[]` | Up to 10 absolute `https://` URLs of BigBlueButton HTML5 plugin manifests (`http://` only with `ALLOW_INSECURE_HTTP=true`, no URL credentials). When non-empty, every meeting of the tenant is created with `pluginManifests=[{"url": ...}, ...]`; running meetings are unaffected. Example: `["https://meet.ooak.jp/plugins/share-request/manifest.json"]` lets viewers request the presenter role to share their screen. |
+
 Validate any manual edit. In local development, `node dist/check-config.js` with the variables exported above is enough. On a host, `/etc/default/bbb-tenant-gateway` must never be sourced by a shell: its values use systemd `EnvironmentFile` syntax (no expansion, no quoting rules of a shell), and sourcing would put secrets into shell history. Run the check under the service's own environment instead, either with the wrapper:
 
 ```bash

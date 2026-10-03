@@ -26,7 +26,10 @@
         "cameraBridge": "bbb-webrtc-sfu",
         "screenShareBridge": "bbb-webrtc-sfu",
         "audioBridge": "bbb-webrtc-sfu"
-      }
+      },
+      "pluginManifests": [
+        "https://meet.ooak.jp/plugins/share-request/manifest.json"
+      ]
     }
   }
 }

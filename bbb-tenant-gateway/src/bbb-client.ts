@@ -163,6 +163,9 @@ export class BbbClient implements BbbClientLike {
       cameraBridge: options.cameraBridge,
       screenShareBridge: options.screenShareBridge,
       audioBridge: options.audioBridge,
+      pluginManifests: options.pluginManifests && options.pluginManifests.length > 0
+        ? JSON.stringify(options.pluginManifests.map((url) => ({ url })))
+        : undefined,
       meta_tenantId: options.tenantId,
       'meta_bbb-recording-ready-url': options.recordingReadyUrl,
     });

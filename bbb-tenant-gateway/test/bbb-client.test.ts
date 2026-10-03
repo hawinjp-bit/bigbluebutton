@@ -131,6 +131,28 @@ test('createMeeting passes the recording-ready URL and reports duplicates', asyn
   assert.equal(exchanges[1]!.url.searchParams.has('meta_bbb-recording-ready-url'), false, 'omitted when not requested');
 });
 
+test('createMeeting sends pluginManifests as a JSON array of url objects, or omits it', async () => {
+  const { client, exchanges } = clientWith(() => success(
+    `<meetingID>${MEETING_ID}</meetingID><internalMeetingID>${RECORD_ID}</internalMeetingID><createTime>1786803013476</createTime>`,
+  ));
+  const manifests = [
+    'https://meet.ooak.jp/plugins/share-request/manifest.json',
+    'https://meet.ooak.jp/plugins/net-report/manifest.json',
+  ];
+
+  await client.createMeeting({ meetingID: MEETING_ID, name: 'Luna lesson', record: false, maxParticipants: 100, tenantId: 'lunar-one', pluginManifests: manifests });
+  const withPlugins = exchanges[0]!.url.searchParams.get('pluginManifests');
+  assert.ok(withPlugins, 'pluginManifests is sent');
+  assert.deepEqual(JSON.parse(withPlugins), manifests.map((url) => ({ url })));
+  assert.equal(withPlugins, '[{"url":"https://meet.ooak.jp/plugins/share-request/manifest.json"},{"url":"https://meet.ooak.jp/plugins/net-report/manifest.json"}]');
+
+  await client.createMeeting({ meetingID: MEETING_ID, name: 'Luna lesson', record: false, maxParticipants: 100, tenantId: 'lunar-one', pluginManifests: [] });
+  assert.equal(exchanges[1]!.url.searchParams.has('pluginManifests'), false, 'omitted when empty');
+
+  await client.createMeeting({ meetingID: MEETING_ID, name: 'Luna lesson', record: false, maxParticipants: 100, tenantId: 'lunar-one' });
+  assert.equal(exchanges[2]!.url.searchParams.has('pluginManifests'), false, 'omitted when absent');
+});
+
 test('getMeetingInfo maps the boolean strings and returns null on notFound', async () => {
   let exists = true;
   const { client, exchanges } = clientWith(() => (exists

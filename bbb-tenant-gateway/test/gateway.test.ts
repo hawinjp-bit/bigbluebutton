@@ -108,6 +108,7 @@ interface ConfigOptions {
   webhook?: boolean;
   maxConcurrentDownloads?: number;
   retentionDays?: number;
+  pluginManifests?: string[];
 }
 
 function testConfig(fixture: Fixture, options: ConfigOptions = {}): GatewayConfig {
@@ -130,6 +131,7 @@ function testConfig(fixture: Fixture, options: ConfigOptions = {}): GatewayConfi
         maxConcurrentDownloads: options.maxConcurrentDownloads ?? 4,
         recordingRetentionDays: options.retentionDays ?? 30,
         ...(options.webhook ? { recordingReadyWebhook: { url: WEBHOOK_URL, secretEnv: 'LUNAR_ONE_WEBHOOK_SECRET' } } : {}),
+        ...(options.pluginManifests ? { pluginManifests: options.pluginManifests } : {}),
       },
       'other-co': {
         apiKeySha256: hashApiKey(OTHER_API_KEY),
@@ -498,6 +500,21 @@ test('applies the tenant automatic recording policy', async () => {
     assert.equal(gateway.fake.created?.allowStartStopRecording, true);
     assert.equal(gateway.fake.created?.recordingReadyUrl, gateway.config.recording.readyCallbackUrl);
   }, { recordingEnabled: true });
+});
+
+test('passes the tenant plugin manifests to create and an empty list by default', async () => {
+  const manifests = ['https://meet.ooak.jp/plugins/share-request/manifest.json'];
+  await withGateway(async (gateway) => {
+    const response = await createMeeting(gateway, 'room-1', false);
+    assert.equal(response.status, 201);
+    assert.deepEqual(gateway.fake.created?.pluginManifests, manifests);
+  }, { pluginManifests: manifests });
+
+  await withGateway(async (gateway) => {
+    const response = await createMeeting(gateway, 'room-1', false);
+    assert.equal(response.status, 201);
+    assert.deepEqual(gateway.fake.created?.pluginManifests, []);
+  });
 });
 
 test('issues a join URL with namespaced meeting and user IDs', async () => {

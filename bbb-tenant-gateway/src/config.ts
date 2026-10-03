@@ -28,6 +28,7 @@ interface RawTenantConfig {
   recordingRetentionDays?: unknown;
   maxConcurrentDownloads?: unknown;
   recordingReadyWebhook?: unknown;
+  pluginManifests?: unknown;
   media?: {
     cameraBridge?: unknown;
     screenShareBridge?: unknown;
@@ -48,6 +49,7 @@ const CAMERA_BRIDGES = new Set<CameraBridge>(['bbb-webrtc-sfu', 'livekit']);
 const SCREEN_SHARE_BRIDGES = new Set<ScreenShareBridge>(['bbb-webrtc-sfu', 'livekit']);
 const AUDIO_BRIDGES = new Set<AudioBridge>(['bbb-webrtc-sfu', 'livekit', 'freeswitch']);
 const DEFAULT_WEBHOOK_SCHEDULE_MS = [60_000, 300_000, 900_000, 3_600_000, 21_600_000];
+const MAX_PLUGIN_MANIFESTS = 10;
 
 function requiredEnv(environment: NodeJS.ProcessEnv, name: string): string {
   const value = environment[name]?.trim();
@@ -111,6 +113,15 @@ function parseAllowedOrigins(value: unknown, name: string, allowInsecureHttp: bo
     }
     return url.origin;
   });
+}
+
+function parsePluginManifests(value: unknown, name: string, allowInsecureHttp: boolean): string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new Error(`${name} must be an array of URL strings`);
+  if (value.length > MAX_PLUGIN_MANIFESTS) {
+    throw new Error(`${name} must list at most ${MAX_PLUGIN_MANIFESTS} manifest URLs`);
+  }
+  return value.map((entry, index) => parseUrl(entry, `${name}[${index}]`, allowInsecureHttp).toString());
 }
 
 function parseBridge<T extends string>(value: unknown, allowed: Set<T>, name: string): T | undefined {
@@ -246,6 +257,7 @@ function parseTenant(
       ),
       audioBridge: parseBridge(raw.media?.audioBridge, AUDIO_BRIDGES, `Tenant ${id} audioBridge`),
     },
+    pluginManifests: parsePluginManifests(raw.pluginManifests, `Tenant ${id} pluginManifests`, allowInsecureHttp),
   };
 }
 

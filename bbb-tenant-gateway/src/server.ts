@@ -374,6 +374,7 @@ export function createApp(config: GatewayConfig, deps: AppDeps): express.Express
       cameraBridge: tenant.media.cameraBridge,
       screenShareBridge: tenant.media.screenShareBridge,
       audioBridge: tenant.media.audioBridge,
+      pluginManifests: tenant.pluginManifests,
       tenantId: tenant.id,
     });
 

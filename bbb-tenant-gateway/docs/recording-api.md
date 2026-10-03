@@ -436,6 +436,7 @@ The tenant hands the endpoint URL (HTTPS) and a secret of at least 16 characters
 | `recordingRetentionDays` | `30` | 1 to 3650 |
 | `maxConcurrentDownloads` | `4` | 1 to 64 |
 | `recordingReadyWebhook` | none | `{ "url": "https://...", "secretEnv": "NAME" }` |
+| `pluginManifests` | `[]` | Up to 10 absolute `https://` URLs of BigBlueButton HTML5 plugin manifests (`http://` only with `ALLOW_INSECURE_HTTP=true`; no URL credentials). Sent to BigBlueButton as `pluginManifests=[{"url": ...}, ...]` on every `create` of the tenant when non-empty; already running meetings are unaffected. Example: `["https://meet.ooak.jp/plugins/share-request/manifest.json"]` (viewers can request the presenter role to share their screen). Not exposed through the public API. |
 
 ### 8.3 Units and timers
 
